@@ -5,7 +5,7 @@ Thank you for your interest in contributing to LL-Connect! This document provide
 ## How to Contribute
 
 ### Reporting Issues
-- Use the [GitHub Issues](https://github.com/Emil224411/ll-connect/issues) page
+- Use the [GitHub Issues](https://github.com/joeytroy/ll-connect3/issues) page
 - Include detailed information about your system and the issue
 - Provide steps to reproduce the problem
 - Include relevant log files and error messages
@@ -28,8 +28,8 @@ Thank you for your interest in contributing to LL-Connect! This document provide
 
 ### Building from Source
 ```bash
-git clone https://github.com/Emil224411/ll-connect.git
-cd ll-connect
+git clone https://github.com/joeytroy/ll-connect3.git
+cd ll-connect3
 make
 ```
 
@@ -161,8 +161,8 @@ Brief description of changes
 
 ### Resources
 - [Project Documentation](docs/)
-- [GitHub Discussions](https://github.com/Emil224411/ll-connect/discussions)
-- [Issue Tracker](https://github.com/Emil224411/ll-connect/issues)
+- [GitHub Discussions](https://github.com/joeytroy/ll-connect3/discussions)
+- [Issue Tracker](https://github.com/joeytroy/ll-connect3/issues)
 
 ### Contact
 - Open an issue for technical questions
@@ -171,7 +171,7 @@ Brief description of changes
 
 ## License
 
-By contributing to LL-Connect, you agree that your contributions will be licensed under the same MIT License that covers the project.
+By contributing to LL-Connect, you agree that your contributions will be licensed under the same GPLv2 License that covers the project.
 
 ## Recognition
 

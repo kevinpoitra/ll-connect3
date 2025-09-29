@@ -26,9 +26,9 @@ A Qt-based Linux port of L-Connect 3 for Lian Li hardware, featuring a modern da
 
 ## Screenshots
 
-<img src="docs/img/systeminfo.png" alt="L-Connect 3 Linux Application" width="500">
+<img src="docs/screenshots/systeminfo.png" alt="L-Connect 3 Linux Application - System Info Page" width="600">
 
-The application features a modern dark theme interface with:
+**System Info Page** - Real-time monitoring dashboard featuring:
 - Left sidebar navigation with icons
 - System Info page with real-time monitoring cards
 - CPU monitoring with circular progress indicator and detailed metrics
@@ -141,8 +141,8 @@ If you prefer not to use package managers:
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/your-username/ll-connect.git
-   cd ll-connect
+   git clone https://github.com/joeytroy/ll-connect3.git
+   cd ll-connect3
    ```
 
 2. **Create build directory**:
@@ -168,7 +168,7 @@ If you prefer not to use package managers:
 ## Project Structure
 
 ```
-ll-connect/
+ll-connect3/
 ├── src/
 │   ├── main.cpp                 # Application entry point
 │   ├── mainwindow.h/.cpp        # Main window implementation
@@ -237,11 +237,14 @@ The application uses Qt stylesheets for theming. Key style classes:
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU General Public License v2.0 (GPLv2) - see the [LICENSE](LICENSE) file for details.
+
+**Note**: This project uses the OpenRGB protocol, which requires GPLv2 licensing for compatibility.
 
 ## Acknowledgments
 
 - **Lian Li**: For the original L-Connect 3 design inspiration
+- **OpenRGB**: For the RGB lighting protocol implementation
 - **Qt Framework**: For the excellent cross-platform GUI framework
 - **QCustomPlot**: For the professional plotting capabilities
 

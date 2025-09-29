@@ -81,14 +81,13 @@ target_compile_options(lian_li_usb_controller
 #     )
 # endif()
 
-# Include directories for sl_infinity_hid (always available)
-target_include_directories(sl_infinity_hid
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
-# Include directories for lian_li_sl_infinity_controller (only if built)
+# Include directories for sl_infinity_hid (only if built)
 if(HIDAPI_FOUND)
+    target_include_directories(sl_infinity_hid
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    
     target_include_directories(lian_li_sl_infinity_controller
         PRIVATE
             /usr/include/hidapi

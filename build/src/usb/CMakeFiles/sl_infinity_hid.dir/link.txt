@@ -1,0 +1,2 @@
+/usr/bin/ar qc libsl_infinity_hid.a CMakeFiles/sl_infinity_hid.dir/sl_infinity_hid.cpp.o
+/usr/bin/ranlib libsl_infinity_hid.a

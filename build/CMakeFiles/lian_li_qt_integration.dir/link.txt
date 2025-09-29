@@ -1,0 +1,2 @@
+/usr/bin/ar qc liblian_li_qt_integration.a CMakeFiles/lian_li_qt_integration.dir/lian_li_qt_integration_autogen/mocs_compilation.cpp.o CMakeFiles/lian_li_qt_integration.dir/src/lian_li_qt_integration.cpp.o
+/usr/bin/ranlib liblian_li_qt_integration.a

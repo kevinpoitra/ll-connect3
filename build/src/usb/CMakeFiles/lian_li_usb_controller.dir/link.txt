@@ -1,2 +1,0 @@
-/usr/bin/ar qc liblian_li_usb_controller.a CMakeFiles/lian_li_usb_controller.dir/lian_li_usb_controller.cpp.o
-/usr/bin/ranlib liblian_li_usb_controller.a

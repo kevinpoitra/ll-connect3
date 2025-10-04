@@ -37,34 +37,21 @@ A complete Linux solution for Lian Li L-Connect 3 fan controllers, providing bot
 
 ### Step 1: Install Kernel Driver
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/your-username/ll-connect3.git
-   cd ll-connect3
-   ```
+**📖 For detailed installation and testing instructions, see: [kernel/README.md](kernel/README.md)**
 
-2. **Build the kernel modules:**
-   ```bash
-   cd kernel
-   sudo make build-all
-   ```
-   
-   This will compile the source code and generate the necessary binary files (`.ko` modules).
+Quick start:
+```bash
+# Clone and build
+git clone https://github.com/your-username/ll-connect3.git
+cd ll-connect3/kernel
+make
+sudo insmod Lian_Li_SL_INFINITY.ko
 
-3. **Install the modules:**
-   ```bash
-   sudo make install-all
-   ```
+# Verify installation
+ls -la /proc/Lian_li_SL_INFINITY/
+```
 
-4. **Load the SL-Infinity driver:**
-   ```bash
-   sudo modprobe Lian_Li_SL_INFINITY
-   ```
-
-5. **Verify driver installation:**
-   ```bash
-   ls -la /proc/Lian_li_SL_INFINITY/
-   ```
+**Note**: The kernel driver is now **fan-only** and **OpenRGB compatible**. RGB control is handled by OpenRGB to prevent conflicts.
 
 ### Step 2: Install L-Connect3 Application
 
@@ -82,7 +69,7 @@ A complete Linux solution for Lian Li L-Connect 3 fan controllers, providing bot
 
 2. **Build the application:**
    ```bash
-   cd /home/dev/Documents/GitHub/ll-connect3
+   cd ll-connect3
    mkdir build && cd build
    cmake ..
    make -j$(nproc)
@@ -100,76 +87,31 @@ A complete Linux solution for Lian Li L-Connect 3 fan controllers, providing bot
 
 ## 🧪 Testing
 
-### Verify Driver is Working
+**📖 For detailed testing instructions, see: [kernel/README.md](kernel/README.md)**
 
-Check that the driver loaded successfully:
-```bash
-# Check kernel messages
-sudo dmesg | grep -i "lian\|sl-infinity"
+### Quick Test
 
-# Verify proc filesystem
-ls -la /proc/Lian_li_SL_INFINITY/
-```
-
-Expected output should show:
-```
-dr-xr-xr-x  10 root root 0 [timestamp] .
-dr-xr-xr-x 713 root root 0 [timestamp] ..
--rw-rw-rw-   1 root root 0 [timestamp] fan_profile
--rw-rw-rw-   1 root root 0 [timestamp] lighting_effect
--rw-rw-rw-   1 root root 0 [timestamp] mbsync
-dr-xr-xr-x   8 root root 0 [timestamp] Port_1
-dr-xr-xr-x   8 root root 0 [timestamp] Port_2
-dr-xr-xr-x   8 root root 0 [timestamp] Port_3
-dr-xr-xr-x   8 root root 0 [timestamp] Port_4
--r--r--r--   1 root root 0 [timestamp] status
-```
-
-### Test Fan Control
-
-**Important Note**: Setting fan speed to "0" does not completely stop the fans - it sets them to minimum speed (~800 RPM) for safety.
-
-1. **Test maximum fan speed:**
+1. **Verify driver is loaded:**
    ```bash
-   echo "100" > /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
+   ls -la /proc/Lian_li_SL_INFINITY/
    ```
 
-2. **Test minimum fan speed:**
+2. **Test fan control:**
    ```bash
-   echo "0" > /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
+   echo "100" | sudo tee /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
+   echo "50" | sudo tee /proc/Lian_li_SL_INFINITY/Port_2/fan_speed
    ```
 
-3. **Test different speeds:**
-   ```bash
-   echo "50" > /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
-   echo "75" > /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
-   ```
+3. **Test RGB with OpenRGB:**
+   - Install OpenRGB: `sudo apt install openrgb`
+   - Run OpenRGB and control RGB lighting
+   - Both fan control (kernel driver) and RGB control (OpenRGB) work together!
 
-4. **Test other ports:**
-   ```bash
-   echo "100" > /proc/Lian_li_SL_INFINITY/Port_2/fan_speed
-   echo "100" > /proc/Lian_li_SL_INFINITY/Port_3/fan_speed
-   echo "100" > /proc/Lian_li_SL_INFINITY/Port_4/fan_speed
-   ```
+### Current Status
 
-### Test RGB Lighting
-
-1. **Set rainbow effect:**
-   ```bash
-   echo "0x20 75 100 0" > /proc/Lian_li_SL_INFINITY/lighting_effect
-   ```
-
-2. **Set static color:**
-   ```bash
-   echo "0x50 0 100 0" > /proc/Lian_li_SL_INFINITY/lighting_effect
-   ```
-
-### Check Status
-
-View current system status:
-```bash
-cat /proc/Lian_li_SL_INFINITY/status
-```
+- ✅ **Fan Control**: Working via kernel driver (63.4 dBA at 100%)
+- ✅ **RGB Control**: Working via OpenRGB (no conflicts)
+- ✅ **Unified App**: L-Connect3 integrates both systems
 
 ## 📊 Performance
 
@@ -190,10 +132,12 @@ cat /proc/Lian_li_SL_INFINITY/status
 
 ### Command Line Fan Control
 
-Control individual fan ports (1-4):
+**📖 For detailed fan control commands, see: [kernel/README.md](kernel/README.md)**
+
+Quick fan control:
 ```bash
-# Set fan speed (0-100%)
-echo "75" > /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
+# Set fan speed (0-100%) - requires sudo
+echo "75" | sudo tee /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
 
 # Read current fan speed
 cat /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
@@ -201,28 +145,19 @@ cat /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
 
 ### RGB Lighting Control
 
-Set lighting effects:
-```bash
-# Format: effect speed brightness direction
-echo "0x20 75 100 0" > /proc/Lian_li_SL_INFINITY/lighting_effect
-```
+**RGB control is now handled by OpenRGB** (no conflicts with fan control):
 
-Available effects:
-- `0x20`: Rainbow
-- `0x21`: Rainbow Morph
-- `0x22`: Breathing
-- `0x50`: Static Color
+1. **Install OpenRGB:**
+   ```bash
+   sudo apt install openrgb
+   ```
 
-### Fan Profiles
+2. **Run OpenRGB:**
+   ```bash
+   openrgb
+   ```
 
-Set fan profiles:
-```bash
-# Available profiles
-echo "0x50" > /proc/Lian_li_SL_INFINITY/fan_profile  # Quiet
-echo "0x20" > /proc/Lian_li_SL_INFINITY/fan_profile  # Standard
-echo "0x21" > /proc/Lian_li_SL_INFINITY/fan_profile  # High
-echo "0x22" > /proc/Lian_li_SL_INFINITY/fan_profile  # Full
-```
+3. **Control RGB lighting** through OpenRGB's GUI while fan control works via kernel driver
 
 ### GUI Application
 
@@ -255,21 +190,17 @@ The GUI provides:
 
 ### Uninstall Kernel Driver
 
-1. **Unload the driver:**
-   ```bash
-   sudo modprobe -r Lian_Li_SL_INFINITY
-   ```
+**📖 For detailed uninstall instructions, see: [kernel/README.md](kernel/README.md)**
 
-2. **Uninstall the modules:**
-   ```bash
-   cd kernel
-   sudo make uninstall-all
-   ```
+Quick uninstall:
+```bash
+# Unload driver
+sudo rmmod Lian_Li_SL_INFINITY
 
-3. **Clean build files:**
-   ```bash
-   sudo make clean
-   ```
+# Clean build files
+cd kernel
+make clean
+```
 
 ## 🐛 Troubleshooting
 
@@ -292,20 +223,19 @@ The GUI provides:
 
 ### Fans Not Responding
 
-1. **Check driver status:**
-   ```bash
-   lsmod | grep Lian_Li_SL_INFINITY
-   ```
+**📖 For detailed troubleshooting, see: [kernel/README.md](kernel/README.md)**
 
-2. **Verify proc filesystem:**
-   ```bash
-   ls -la /proc/Lian_li_SL_INFINITY/
-   ```
+Quick checks:
+```bash
+# Check driver status
+lsmod | grep Lian_Li_SL_INFINITY
 
-3. **Test with different speeds:**
-   ```bash
-   echo "100" > /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
-   ```
+# Verify proc filesystem
+ls -la /proc/Lian_li_SL_INFINITY/
+
+# Test fan control (requires sudo)
+echo "100" | sudo tee /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
+```
 
 ### Application Not Starting
 

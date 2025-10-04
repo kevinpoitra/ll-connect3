@@ -1,5 +1,7 @@
 
-# Lian Li SL-INFINITY (ENE 0cf2:a102) — segmented HID feature driver
+# Lian Li SL-INFINITY (ENE 0cf2:a102) — Fan Control Driver
+
+**Fan-Only Driver** - RGB control handled by OpenRGB to avoid conflicts.
 
 ## Build & Install
 ```bash
@@ -29,12 +31,18 @@ make clean
 sudo make uninstall
 ```
 
-## confirm proc entries exist
+## Confirm proc entries exist
 ```bash
 ls -la /proc/Lian_Li_SL_INFINITY
 ```
 
-## Use
+## Check logs for individual port control
+```bash
+sudo dmesg | grep -i "sli\|lian\|error\|fail" | tail -n 20
+sudo dmesg | grep -E "Lian_Li_SL_INFINITY|Port.*set to" | tail -n 20
+```
+
+## Testing the Fans
 ```bash
 # Set per-port duty (0-100% directly)
 echo 100 | sudo tee /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
@@ -43,14 +51,10 @@ echo 100 | sudo tee /proc/Lian_li_SL_INFINITY/Port_3/fan_speed
 echo 100 | sudo tee /proc/Lian_li_SL_INFINITY/Port_4/fan_speed
 
 # Test different speeds on each port
-echo 30 | sudo tee /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
-echo 30 | sudo tee /proc/Lian_li_SL_INFINITY/Port_2/fan_speed
-echo 30 | sudo tee /proc/Lian_li_SL_INFINITY/Port_3/fan_speed
-echo 30 | sudo tee /proc/Lian_li_SL_INFINITY/Port_4/fan_speed
-
-# Check logs for individual port control
-sudo dmesg | grep -i "sli\|lian\|error\|fail" | tail -n 20
-sudo dmesg | grep -E "Lian_Li_SL_INFINITY|Port.*set to" | tail -n 20
+echo 40 | sudo tee /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
+echo 40 | sudo tee /proc/Lian_li_SL_INFINITY/Port_2/fan_speed
+echo 40 | sudo tee /proc/Lian_li_SL_INFINITY/Port_3/fan_speed
+echo 40 | sudo tee /proc/Lian_li_SL_INFINITY/Port_4/fan_speed
 
 # Read back last-set duty
 cat /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
@@ -58,15 +62,13 @@ cat /proc/Lian_li_SL_INFINITY/Port_2/fan_speed
 cat /proc/Lian_li_SL_INFINITY/Port_3/fan_speed
 cat /proc/Lian_li_SL_INFINITY/Port_4/fan_speed
 
-# Placeholder RPM (always 0 for now)
-cat /proc/Lian_li_SL_INFINITY/Port_1/rpm
-```
-
 ## What changed
 - **Individual Port Control**: Each port now uses its own command byte for direct control
 - **Direct Percentage Input**: No RPM conversion - input 0-100 directly as percentage
 - **Simplified Protocol**: Single 7-byte HID SET_REPORT command per port
 - **Per-Port Logging**: Clear debug messages showing which port is being controlled
+- **OpenRGB Compatible**: RGB control removed to prevent conflicts with OpenRGB
+- **Fan-Only Focus**: Driver only handles fan speed control (0-100%)
 
 ## Protocol Details
 **Individual Port Control Commands:**
@@ -83,6 +85,8 @@ Where `<duty>` is the percentage (0-100) directly.
 - Each port controlled independently
 - Direct percentage input (0-100)
 - Real-time individual fan speed control
+- **OpenRGB Compatible**: RGB control via OpenRGB (no conflicts)
+- **Fan-Only Driver**: Focused on reliable fan speed control
 
 ## Quick Install & Test
 ```bash

@@ -17,6 +17,12 @@ public:
     void setProfile(const QString &profile);
     void setCurrentTemperature(int temperature);
     void setCurrentRPM(int rpm);
+    void setGraphEnabled(bool enabled);
+    void setCustomCurve(const QVector<QPointF> &points);
+    QVector<QPointF> getCurvePoints() const { return m_curvePoints; }
+
+signals:
+    void curvePointsChanged(const QVector<QPointF> &points);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -56,6 +62,9 @@ private:
     // Interactive editing
     bool m_dragging;
     int m_draggedPoint;
+    
+    // Graph state
+    bool m_graphEnabled;
     
     // Colors
     QColor m_backgroundColor;

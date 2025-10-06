@@ -27,9 +27,12 @@ public:
 
 private slots:
     void onProfileChanged();
-    // Button functions removed - they weren't doing anything useful
+    void onDefaultClicked();
+    void onApplyToAllClicked();
     void onStartStopToggled();
     void updateFanData();
+    void onCurvePointsChanged(const QVector<QPointF> &points);
+    void onPortSelectionChanged();
 
 private:
     void setupUI();
@@ -54,6 +57,10 @@ private:
     void updateFanTable();
     bool isPortConnected(int port);
     QColor getTemperatureColor(int temperature);
+    void saveCustomCurves();
+    void loadCustomCurves();
+    QVector<QPointF> getDefaultCurveForProfile(const QString &profile);
+    int calculateRPMForCustomCurve(int port, int temperature);
     // Fan detection functions removed - configuration is now in Settings
     
     QVBoxLayout *m_mainLayout;
@@ -63,6 +70,7 @@ private:
     
     // Fan table
     QTableWidget *m_fanTable;
+    QVector<QComboBox*> m_fanSizeComboBoxes; // Size dropdown for each port
     
     // Fan curve
     FanCurveWidget *m_fanCurveWidget;
@@ -73,7 +81,6 @@ private:
     QRadioButton *m_stdSpRadio;
     QRadioButton *m_highSpRadio;
     QRadioButton *m_fullSpRadio;
-    QRadioButton *m_customRadio;
     
     QCheckBox *m_startStopCheck;
     
@@ -82,7 +89,14 @@ private:
     QLabel *m_rpmLabel;
     QSpinBox *m_rpmSpinBox;
     
-    // Buttons removed - they weren't doing anything useful
+    QPushButton *m_applyToAllButton;
+    QPushButton *m_defaultButton;
+    
+    // Current selected port (1-4)
+    int m_selectedPort;
+    
+    // Per-port custom curves (port 1-4 -> curve points)
+    QMap<int, QVector<QPointF>> m_customCurves;
     
     // Update timers
     QTimer *m_updateTimer;

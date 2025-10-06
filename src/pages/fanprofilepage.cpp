@@ -12,6 +12,8 @@
 #include <QRegularExpression>
 #include <QDir>
 #include <QRandomGenerator>
+#include <QSettings>
+#include <QMap>
 #include <cmath>
 #include <vector>
 #include <algorithm>
@@ -28,6 +30,7 @@ FanProfilePage::FanProfilePage(QWidget *parent)
     , m_portConnected(4, false) // Initialize port detection
     , m_activePorts() // Empty initially
     , m_hidController(nullptr)
+    , m_selectedPort(1) // Default to Port 1
 {
     // Set minimum size for the page - more compact
     setMinimumSize(700, 500);
@@ -65,6 +68,15 @@ FanProfilePage::FanProfilePage(QWidget *parent)
     }
     
     // Fan configuration is now handled via Settings page
+    
+    // Load saved custom curves
+    loadCustomCurves();
+    
+    // Connect curve widget signal for when user drags points
+    connect(m_fanCurveWidget, &FanCurveWidget::curvePointsChanged, this, &FanProfilePage::onCurvePointsChanged);
+    
+    // Connect table selection to update which port's curve is shown
+    connect(m_fanTable, &QTableWidget::itemSelectionChanged, this, &FanProfilePage::onPortSelectionChanged);
     
     // Initial update
     updateTemperature();
@@ -132,29 +144,65 @@ void FanProfilePage::setupFanTable()
     for (int row = 0; row < 4; ++row) {
         // Row number
         QTableWidgetItem *rowItem = new QTableWidgetItem(QString::number(row + 1));
+        rowItem->setFlags(rowItem->flags() & ~Qt::ItemIsEditable); // Make read-only
         m_fanTable->setItem(row, 0, rowItem);
         
         // Port number
         QTableWidgetItem *portItem = new QTableWidgetItem("Port " + QString::number(row + 1));
+        portItem->setFlags(portItem->flags() & ~Qt::ItemIsEditable); // Make read-only
         m_fanTable->setItem(row, 1, portItem);
         
         // Profile (will be updated based on selection)
         QTableWidgetItem *profileItem = new QTableWidgetItem("Quiet");
+        profileItem->setFlags(profileItem->flags() & ~Qt::ItemIsEditable); // Make read-only
         m_fanTable->setItem(row, 2, profileItem);
         
         // Temperature (will be updated with real data)
         QTableWidgetItem *tempItem = new QTableWidgetItem("0°C");
         tempItem->setForeground(getTemperatureColor(0));
+        tempItem->setFlags(tempItem->flags() & ~Qt::ItemIsEditable); // Make read-only
         m_fanTable->setItem(row, 3, tempItem);
         
         // RPM (will be updated with real data)
         QTableWidgetItem *rpmItem = new QTableWidgetItem("0 RPM");
         rpmItem->setForeground(QColor(255, 165, 0)); // Orange color
+        rpmItem->setFlags(rpmItem->flags() & ~Qt::ItemIsEditable); // Make read-only
         m_fanTable->setItem(row, 4, rpmItem);
         
-        // Size (placeholder)
-        QTableWidgetItem *sizeItem = new QTableWidgetItem("120mm");
-        m_fanTable->setItem(row, 5, sizeItem);
+        // Size dropdown (120MM or 140MM)
+        QComboBox *sizeCombo = new QComboBox();
+        sizeCombo->addItem("120MM");
+        sizeCombo->addItem("140MM");
+        sizeCombo->setCurrentIndex(0); // Default to 120MM
+        sizeCombo->setStyleSheet(R"(
+            QComboBox {
+                background-color: #3d3d3d;
+                color: white;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 2px 8px;
+                min-width: 70px;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid white;
+                margin-right: 5px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #3d3d3d;
+                color: white;
+                selection-background-color: #2a82da;
+                border: 1px solid #555;
+            }
+        )");
+        m_fanSizeComboBoxes.append(sizeCombo);
+        m_fanTable->setCellWidget(row, 5, sizeCombo);
     }
     
     m_leftLayout->addWidget(m_fanTable);
@@ -234,7 +282,6 @@ void FanProfilePage::setupControls()
     m_stdSpRadio = new QRadioButton("StdSP");
     m_highSpRadio = new QRadioButton("HighSP");
     m_fullSpRadio = new QRadioButton("FullSP");
-    m_customRadio = new QRadioButton("MB RPM Sync");
     
     m_quietRadio->setChecked(true);
     
@@ -242,14 +289,12 @@ void FanProfilePage::setupControls()
     profileLayout->addWidget(m_stdSpRadio);
     profileLayout->addWidget(m_highSpRadio);
     profileLayout->addWidget(m_fullSpRadio);
-    profileLayout->addWidget(m_customRadio);
     profileLayout->addStretch();
     
     connect(m_quietRadio, &QRadioButton::toggled, this, &FanProfilePage::onProfileChanged);
     connect(m_stdSpRadio, &QRadioButton::toggled, this, &FanProfilePage::onProfileChanged);
     connect(m_highSpRadio, &QRadioButton::toggled, this, &FanProfilePage::onProfileChanged);
     connect(m_fullSpRadio, &QRadioButton::toggled, this, &FanProfilePage::onProfileChanged);
-    connect(m_customRadio, &QRadioButton::toggled, this, &FanProfilePage::onProfileChanged);
     
     m_rightLayout->addWidget(m_profileGroup);
     
@@ -298,7 +343,27 @@ void FanProfilePage::setupControls()
     // Fan curve on the left
     fanCurveLayout->addWidget(m_fanCurveWidget, 1); // Fan curve takes remaining space
     
-    // Buttons removed - they weren't doing anything useful
+    // Buttons on the right
+    QVBoxLayout *buttonsLayout = new QVBoxLayout();
+    buttonsLayout->setSpacing(10);
+    
+    m_applyToAllButton = new QPushButton("Apply To All");
+    m_applyToAllButton->setObjectName("actionButton");
+    m_applyToAllButton->setMinimumWidth(120);
+    m_applyToAllButton->setToolTip("Apply current port's curve to all other ports");
+    connect(m_applyToAllButton, &QPushButton::clicked, this, &FanProfilePage::onApplyToAllClicked);
+    
+    m_defaultButton = new QPushButton("Default");
+    m_defaultButton->setObjectName("actionButton");
+    m_defaultButton->setMinimumWidth(120);
+    m_defaultButton->setToolTip("Reset current port's curve to the selected profile default");
+    connect(m_defaultButton, &QPushButton::clicked, this, &FanProfilePage::onDefaultClicked);
+    
+    buttonsLayout->addWidget(m_applyToAllButton);
+    buttonsLayout->addWidget(m_defaultButton);
+    buttonsLayout->addStretch();
+    
+    fanCurveLayout->addLayout(buttonsLayout);
     
     m_rightLayout->addLayout(fanCurveLayout);
     m_rightLayout->addStretch();
@@ -374,7 +439,6 @@ void FanProfilePage::updateFanCurve()
     if (m_stdSpRadio->isChecked()) profile = "Standard";
     else if (m_highSpRadio->isChecked()) profile = "High Speed";
     else if (m_fullSpRadio->isChecked()) profile = "Full Speed";
-    else if (m_customRadio->isChecked()) profile = "MB RPM Sync";
     
     // Update the fan curve widget
     m_fanCurveWidget->setProfile(profile);
@@ -504,11 +568,13 @@ void FanProfilePage::updateFanData()
         // Temperature with color coding (show for all ports)
         QTableWidgetItem *tempItem = new QTableWidgetItem(QString::number(currentTemp) + "°C");
         tempItem->setForeground(getTemperatureColor(currentTemp));
+        tempItem->setFlags(tempItem->flags() & ~Qt::ItemIsEditable); // Make read-only
         m_fanTable->setItem(row, 3, tempItem);
         
         // RPM with orange color (0 for inactive ports)
         QTableWidgetItem *rpmItem = new QTableWidgetItem(QString::number(realRPM) + " RPM");
         rpmItem->setForeground(QColor(255, 165, 0)); // Orange color
+        rpmItem->setFlags(rpmItem->flags() & ~Qt::ItemIsEditable); // Make read-only
         m_fanTable->setItem(row, 4, rpmItem);
     }
     
@@ -521,7 +587,48 @@ void FanProfilePage::onProfileChanged()
     updateFanCurve();
 }
 
-// Button functions removed - they weren't doing anything useful
+void FanProfilePage::onApplyToAllClicked()
+{
+    qDebug() << "Apply To All clicked - copying Port" << m_selectedPort << "curve to all ports";
+    
+    // Get the custom curve for the currently selected port
+    QVector<QPointF> currentCurve = m_fanCurveWidget->getCurvePoints();
+    
+    // Apply this curve to all ports
+    for (int port = 1; port <= 4; ++port) {
+        m_customCurves[port] = currentCurve;
+    }
+    
+    // Save all curves
+    saveCustomCurves();
+    
+    qDebug() << "Applied Port" << m_selectedPort << "curve to all 4 ports";
+}
+
+void FanProfilePage::onDefaultClicked()
+{
+    qDebug() << "Default clicked - resetting Port" << m_selectedPort << "to profile default";
+    
+    // Get the current selected profile
+    QString profile = "Quiet";
+    if (m_stdSpRadio->isChecked()) profile = "Standard";
+    else if (m_highSpRadio->isChecked()) profile = "High Speed";
+    else if (m_fullSpRadio->isChecked()) profile = "Full Speed";
+    
+    // Get default curve for this profile
+    QVector<QPointF> defaultCurve = getDefaultCurveForProfile(profile);
+    
+    // Set it for the current port
+    m_customCurves[m_selectedPort] = defaultCurve;
+    
+    // Update the widget to show the default curve
+    m_fanCurveWidget->setCustomCurve(defaultCurve);
+    
+    // Save changes
+    saveCustomCurves();
+    
+    qDebug() << "Reset Port" << m_selectedPort << "to" << profile << "default curve";
+}
 
 void FanProfilePage::onStartStopToggled()
 {
@@ -583,29 +690,27 @@ int FanProfilePage::calculateRPMForTemperature(int temperature)
     if (m_stdSpRadio->isChecked()) profile = "Standard";
     else if (m_highSpRadio->isChecked()) profile = "High Speed";
     else if (m_fullSpRadio->isChecked()) profile = "Full Speed";
-    else if (m_customRadio->isChecked()) profile = "MB RPM Sync";
     
     // Define curve data points for each profile (RPM values)
     QVector<QPointF> curvePoints;
     
     if (profile == "Quiet") {
-        curvePoints << QPointF(0, 0) << QPointF(25, 420) << QPointF(45, 840) 
+        curvePoints << QPointF(0, 120) << QPointF(25, 420) << QPointF(45, 840) 
                    << QPointF(65, 1050) << QPointF(80, 1680) << QPointF(90, 2100) << QPointF(100, 2100);
     } else if (profile == "Standard") {
-        curvePoints << QPointF(0, 200) << QPointF(20, 400) << QPointF(40, 600) 
-                   << QPointF(60, 800) << QPointF(75, 1000) << QPointF(85, 1200);
+        // Standard Speed (StdSP): Balanced curve
+        curvePoints << QPointF(0, 120) << QPointF(25, 420) << QPointF(40, 1050) << QPointF(55, 1260) 
+                   << QPointF(70, 1680) << QPointF(90, 2100) << QPointF(100, 2100);
     } else if (profile == "High Speed") {
-        curvePoints << QPointF(0, 300) << QPointF(15, 500) << QPointF(35, 800) 
-                   << QPointF(55, 1000) << QPointF(70, 1200) << QPointF(80, 1400);
+        // High Speed (HighSP): Smooth progressive ramp
+        curvePoints << QPointF(0, 120) << QPointF(25, 910) << QPointF(35, 1140) << QPointF(50, 1470)
+                   << QPointF(70, 1800) << QPointF(85, 2100) << QPointF(100, 2100);
     } else if (profile == "Full Speed") {
-        curvePoints << QPointF(0, 400) << QPointF(10, 600) << QPointF(30, 1000) 
-                   << QPointF(50, 1400) << QPointF(70, 1800) << QPointF(90, 2200);
-    } else if (profile == "MB RPM Sync") {
-        curvePoints << QPointF(0, 100) << QPointF(30, 200) << QPointF(50, 400) 
-                   << QPointF(70, 600) << QPointF(85, 800) << QPointF(95, 1000);
+        curvePoints << QPointF(0, 120) << QPointF(25, 2100) << QPointF(40, 2100) << QPointF(55, 2100)
+                   << QPointF(70, 2100) << QPointF(90, 2100) << QPointF(100, 2100);
     } else {
         // Default to Quiet (original Lian Li curve)
-        curvePoints << QPointF(0, 0) << QPointF(25, 420) << QPointF(45, 840) 
+        curvePoints << QPointF(0, 120) << QPointF(25, 420) << QPointF(45, 840) 
                    << QPointF(65, 1050) << QPointF(80, 1680) << QPointF(90, 2100) << QPointF(100, 2100);
     }
     
@@ -753,9 +858,9 @@ int FanProfilePage::getRealFanRPM(int port)
         return 0;
     }
     
-    // Fan is connected - show fake RPM based on temperature
+    // Fan is connected - show fake RPM based on temperature and custom curve
     // This gives a realistic RPM display even though we can't read actual RPM
-    int baseRPM = calculateRPMForTemperature(m_cachedTemperature);
+    int baseRPM = calculateRPMForCustomCurve(port, m_cachedTemperature);
     
     // Add some realistic noise (±50 RPM)
     static int noiseCounter = 0;
@@ -772,13 +877,15 @@ int FanProfilePage::getRealFanRPM(int port)
 int FanProfilePage::convertPercentageToRPM(int percentage)
 {
     // Convert kernel driver percentage (0-100%) to RPM values
-    // Simple linear mapping: 0% = 0 RPM, 100% = 2100 RPM
+    // Based on calibration: RPM = Percentage × 21
+    // 40% = 840 RPM, 50% = 1040 RPM, 60% = 1260 RPM, 
+    // 70% = 1480 RPM, 80% = 1680 RPM, 90% = 1880 RPM, 100% = 2100 RPM
     
     if (percentage <= 0) return 0;
     if (percentage >= 100) return 2100;
     
-    // Linear interpolation between 0-100% and 0-2100 RPM
-    int rpm = (percentage * 2100) / 100;
+    // Linear conversion: RPM = Percentage × 21
+    int rpm = percentage * 21;
     
     return rpm;
 }
@@ -794,229 +901,139 @@ void FanProfilePage::controlFanSpeeds()
     
     // --- state (static inside controlFanSpeeds or make members) ---
     static double Tf = 0.0;                // filtered temp
-    static std::deque<double> hist;        // 0.5 s ring buffer of Tf (faster response)
-    static int rpm_out = 0;
+    static std::deque<double> hist;        // short history for derivative
+    static QMap<int, int> rpm_out;         // Per-port RPM output
     static QElapsedTimer stepTimer;
+    
+    // Initialize rpm_out for all ports if empty
+    if (rpm_out.isEmpty()) {
+        for (int port = 1; port <= 4; ++port) {
+            rpm_out[port] = 0;
+        }
+    }
     
     double dt = stepTimer.isValid() ? stepTimer.restart()/1000.0 : 0.1;
     if (dt <= 0) dt = 0.1;
 
-    // 1) Much faster asymmetric filter for quicker response
+    // 1) Very fast asymmetric filter - almost instant response when heating
     int Traw = currentTemp;  // your measured temp
-    double alpha = (Traw >= Tf) ? 0.85 : 0.40;  // Much faster response
+    double alpha = (Traw >= Tf) ? 0.95 : 0.60;  // VERY fast heating response, moderate cooling
     Tf += alpha * (Traw - Tf);
 
-    // Keep ~0.5 s history for faster derivative (assumes ~10 Hz loop)
-    int histMax = std::max(2, int(std::round(0.5 / dt)));
+    // Keep short history for derivative (0.3s)
+    int histMax = std::max(2, int(std::round(0.3 / dt)));
     hist.push_back(Tf);
     while ((int)hist.size() > histMax) hist.pop_front();
 
-    // 2) Positive dT/dt (°C/s), clamped - more aggressive
+    // 2) Calculate temperature rate of change
     double dTdt = 0.0;
     if (hist.size() >= 2) dTdt = (hist.back() - hist.front()) / std::max(0.1, dt*(hist.size()-1));
-    if (dTdt < 0) dTdt = 0;
-    if (dTdt > 5.0) dTdt = 5.0;  // Allow higher rate of change
+    if (dTdt < 0) dTdt = 0;  // Only care about heating
+    if (dTdt > 10.0) dTdt = 10.0;  // Allow very high rate of change
 
-    // A) Only preheat when heating
-    const bool heating = (dTdt > 0.05);   // small floor to avoid noise
+    // Determine if heating
+    const bool heating = (dTdt > 0.02);   // very small threshold
 
-    int base_now  = calculateRPMForTemperature(int(std::round(Tf)));
-    int base_pred = calculateRPMForTemperature(int(std::round(Tf + dTdt * 7.0)));
-
-    int base_rpm  = heating ? std::max(base_now, base_pred) : base_now;
-    int ff_rpm    = heating ? int(std::round(dTdt * 500.0)) : 0; // Much more aggressive feedforward
-    
-    // 4) Spike booster when heating rapidly - more aggressive
-    static QElapsedTimer spikeT; static bool spike=false;
-    if (heating && dTdt > 0.5 && !spike) { spike=true; spikeT.restart(); } // Lower threshold
-    int spikeBoost = 0;
-    if (spike) {
-        int ms = spikeT.elapsed();
-        if (ms < 10000) spikeBoost = int(std::round(800.0 * (1.0 - ms/10000.0))); // Much more aggressive boost
-        else spike = false;
-    }
-    
-    // Clear spike/boost when not heating
-    if (!heating) { spike = false; }
-
-    int target = std::clamp(base_rpm + ff_rpm + spikeBoost, 0, 2100);
-
-    // C) Below-50°C governor (explicit requirement)
-    static bool coolBand = false;
-    const double TLOW = 50.0, HYST = 0.7;
-    
-    if (!coolBand && Tf <= TLOW) coolBand = true;
-    if (coolBand && Tf >= TLOW + HYST) coolBand = false;
-    
-    if (coolBand) {
-        // no look-ahead, no spike, no hold
-        int lowTarget = calculateRPMForLoad(int(std::round(Tf)), m_cachedCPULoad, m_cachedGPULoad); // uses actual curve
-        target = std::max(lowTarget, 800); // clamp to quiet floor
-    }
-
-    // B) Cooling session that actually finishes (ignores deadband while active)
-    // Make cooling more aggressive at higher temperatures
-    int DOWN_DB = 20;      // threshold to start a down-session
-    int DOWN_EPS = 5;       // finish when within this of target
-    double DOWN_SLEW = 120.0;   // RPM/s downward
-    int HOLD_MS = 5000;    // cooldown hold before any drop
-    const int   up_db       = 2;       // very small on rise (reduced from 5)
-    const double up_slew    = 800.0;   // RPM/s upward (increased from 350)
-    
-    // More aggressive cooling at higher temperatures
-    double up_slew_adaptive = up_slew;  // Start with base upward slew rate
-    
-    if (Tf > 70.0) {
-        DOWN_DB = 10;       // Start cooling sooner at high temps
-        DOWN_EPS = 3;       // More precise cooling
-        DOWN_SLEW = 200.0;  // Much faster cooling at high temps
-        HOLD_MS = 2000;     // Shorter hold time at high temps
-        up_slew_adaptive = 1200.0;  // Very fast upward response at high temps
-    } else if (Tf > 60.0) {
-        DOWN_DB = 15;       // Moderate cooling
-        DOWN_EPS = 4;       // Moderate precision
-        DOWN_SLEW = 150.0;  // Moderate speed
-        HOLD_MS = 3000;     // Moderate hold time
-        up_slew_adaptive = 1000.0;  // Fast upward response at medium temps
-    } else if (Tf > 50.0) {
-        up_slew_adaptive = 900.0;   // Moderate upward response
-    }
-
-    // state
-    static bool coolingSession = false;
-    static bool holdDown = false;
-    static QElapsedTimer holdT;
-
-    // hold management - prevent rapid drops after heating spikes
-    // Hold should only prevent increases, not block decreases
-    if (target >= rpm_out) { 
-        holdDown = false; 
-        coolingSession = false; 
-    } else { // target < rpm_out
-        if (!holdDown && !coolingSession) { 
-            holdDown = true; 
-            holdT.restart(); 
+    // 3-8) Control each port individually using its custom curve
+    for (int port = 1; port <= 4; ++port) {
+        // Calculate base RPM from this port's custom curve
+        int base_now  = calculateRPMForCustomCurve(port, int(std::round(Tf)));
+        int base_pred = calculateRPMForCustomCurve(port, int(std::round(Tf + dTdt * 10.0))); // Look ahead 10 seconds
+        
+        int base_rpm  = heating ? std::max(base_now, base_pred) : base_now;
+        
+        // Aggressive feedforward proportional to heating rate
+        int ff_rpm = heating ? int(std::round(dTdt * 800.0)) : 0; // Very aggressive
+        
+        // Extra boost when heating rapidly (>0.3°C/s)
+        int boostRPM = 0;
+        if (heating && dTdt > 0.3) {
+            boostRPM = 400;  // Extra 400 RPM boost when heating fast
         }
-        // Always allow cooling down, even while on hold
-        // Hold only prevents bouncing back up too soon
-        // Shorter hold times at higher temperatures
-        int holdTime = (Tf > 70.0) ? 1000 : (Tf > 60.0) ? 2000 : 3000;
-        if (holdDown && holdT.elapsed() > holdTime) {
-            holdDown = false;
+
+        int target = std::clamp(base_rpm + ff_rpm + boostRPM, 0, 2100);
+
+        // Simplified slew rate control - very fast response
+        double up_slew = 1500.0;    // RPM/s upward (VERY FAST)
+        double down_slew = 200.0;   // RPM/s downward (moderate)
+        
+        // Even faster at high temperatures
+        if (Tf > 65.0) {
+            up_slew = 2000.0;       // EXTREMELY fast at high temps
+            down_slew = 300.0;      // Faster cooling too
         }
-    }
-    
-    // Force release hold when clearly cool or at high temps
-    if (Tf < 49.5 || Tf > 75.0) {
-        holdDown = false;
-    }
-
-    // start session only when allowed AND gap is meaningful
-    if (!heating && !holdDown && !coolingSession && target < rpm_out - DOWN_DB) {
-        coolingSession = true;
-    }
-
-    // apply session
-    int maxStepDown = std::max(1, int(std::round(DOWN_SLEW * dt)));
-    int maxStepUp = std::max(1, int(std::round(up_slew_adaptive * dt)));
-    int gated = rpm_out;
-
-    if (heating) {
-        coolingSession = false; // abort immediately if temp rising
-        if (target - rpm_out >= up_db) {
-            gated = std::min(target, rpm_out + maxStepUp);
-        } else {
-            gated = rpm_out; // within deadband
+        
+        int maxStepUp = std::max(1, int(std::round(up_slew * dt)));
+        int maxStepDown = std::max(1, int(std::round(down_slew * dt)));
+        
+        // Apply slew limits
+        int gated = rpm_out[port];
+        if (target > rpm_out[port]) {
+            // Going up - apply max step
+            gated = std::min(target, rpm_out[port] + maxStepUp);
+        } else if (target < rpm_out[port]) {
+            // Going down - apply max step
+            gated = std::max(target, rpm_out[port] - maxStepDown);
         }
-    } else if (target < rpm_out) {
-        if (coolingSession) {
-            // ignore deadband while in session; staircase to target
-            int next = std::max(target, rpm_out - maxStepDown);
-            if ((rpm_out - next) <= DOWN_EPS || next <= target + DOWN_EPS) {
-                coolingSession = false; // done
-            }
-            gated = next;
-        } else {
-            // Allow cooling down even while on hold - hold only prevents increases
-            gated = std::max(target, rpm_out - maxStepDown);
+        
+        // Simple write threshold - write if change is meaningful
+        int writeThresh = 10;  // 10 RPM threshold
+        bool shouldWrite = false;
+        
+        if (std::abs(gated - rpm_out[port]) >= writeThresh || rpm_out[port] == 0) {
+            shouldWrite = true;
         }
-    } else {
-        // equal -> keep
-        gated = rpm_out;
-    }
 
-    // 5) Separate write threshold for down steps (tiny during session)
-    int writeThreshUpRPM   = (Tf > 60.0) ? 5 : 10;  // More responsive upward at higher temps
-    int writeThreshDownRPM = coolingSession ? 0 : (Tf > 70.0) ? 10 : 20; // More responsive at high temps
-
-    bool shouldWrite = false;
-    static bool wasHoldDown = false;
-    bool holdJustReleased = (wasHoldDown && !holdDown);
-    
-    if (gated > rpm_out) {
-        shouldWrite = (gated - rpm_out) >= writeThreshUpRPM;
-    } else if (gated < rpm_out) {
-        shouldWrite = (rpm_out - gated) >= writeThreshDownRPM;
-    } else {
-        shouldWrite = (rpm_out == 0); // always allow first write
-    }
-    
-    // Always write when hold is released
-    if (holdJustReleased) {
-        shouldWrite = true;
-    }
-    
-    wasHoldDown = holdDown;
-
-    if (shouldWrite) {
-        // write to all ports - let the user see which ones work
-        for (int port = 1; port <= 4; ++port) {
+        if (shouldWrite) {
             setFanSpeed(port, gated);
+            rpm_out[port] = gated;
+            qDebug() << "Port" << port << ": T=" << Tf << "°C dT/dt=" << dTdt << "°C/s"
+                     << " heating=" << heating << " base=" << base_rpm 
+                     << " target=" << target << " -> RPM=" << rpm_out[port];
         }
-        rpm_out = gated;
-        qDebug() << "WRITE: heating=" << heating << " coolBand=" << coolBand 
-                 << " session=" << coolingSession << " hold=" << holdDown
-                 << " Tf=" << Tf << " dTdt=" << dTdt << " rpm_out=" << rpm_out 
-                 << " target=" << target << " gated=" << gated
-                 << " activePorts=" << m_activePorts;
-    } else {
-        qDebug() << "HOLD:  heating=" << heating << " coolBand=" << coolBand 
-                 << " session=" << coolingSession << " hold=" << holdDown
-                 << " Tf=" << Tf << " dTdt=" << dTdt << " rpm_out=" << rpm_out 
-                 << " target=" << target << " gated=" << gated;
     }
 }
 
 void FanProfilePage::setFanSpeed(int port, int targetRPM)
 {
-    // Clamp speed to valid range (0-2100 based on real data)
+    // Clamp speed to valid range
+    // Minimum 840 RPM to prevent fan shutdown (allow 120 RPM for idle)
+    if (targetRPM > 120 && targetRPM < 840) {
+        targetRPM = 840; // Enforce minimum operating speed
+    }
     targetRPM = qBound(0, targetRPM, 2100);
     
     // Convert RPM to percentage for kernel driver
-    // Based on our calibration: 100% gives us ~1900 RPM (59.4 dBA)
-    // Use a more aggressive mapping to hit 100% at lower RPM
-    int speedPercent;
-    if (targetRPM <= 0) {
-        speedPercent = 0;
-    } else if (targetRPM <= 800) {
-        // 0-800 RPM maps to 0-20%
-        speedPercent = (targetRPM * 20) / 800;
-    } else if (targetRPM <= 1500) {
-        // 800-1500 RPM maps to 20-70%
-        speedPercent = 20 + ((targetRPM - 800) * 50) / 700;
-    } else {
-        // 1500-2100 RPM maps to 70-100%
-        speedPercent = 70 + ((targetRPM - 1500) * 30) / 600;
-    }
+    // Based on calibration: Percentage = RPM / 21
+    // 840 RPM = 40%, 1260 RPM = 60%, 1680 RPM = 80%, 2100 RPM = 100%
+    int speedPercent = targetRPM / 21;
     
-    // Clamp to reasonable range
+    // Clamp to valid range
     speedPercent = qBound(0, speedPercent, 100);
+    
+    // Calculate expected dBA based on calibration
+    // Linear interpolation from calibrated values:
+    // 840 RPM = 34 dBA, 1040 RPM = 39 dBA, 1260 RPM = 45 dBA, 
+    // 1480 RPM = 49 dBA, 1680 RPM = 52 dBA, 1880 RPM = 56 dBA, 2100 RPM = 60 dBA
+    double expectedDBA = 0.0;
+    if (targetRPM <= 840) {
+        expectedDBA = 34.0 + (targetRPM - 840) * (34.0 - 0.0) / (840 - 0);
+    } else if (targetRPM <= 1040) {
+        expectedDBA = 34.0 + (targetRPM - 840) * (39.0 - 34.0) / (1040 - 840);
+    } else if (targetRPM <= 1260) {
+        expectedDBA = 39.0 + (targetRPM - 1040) * (45.0 - 39.0) / (1260 - 1040);
+    } else if (targetRPM <= 1480) {
+        expectedDBA = 45.0 + (targetRPM - 1260) * (49.0 - 45.0) / (1480 - 1260);
+    } else if (targetRPM <= 1680) {
+        expectedDBA = 49.0 + (targetRPM - 1480) * (52.0 - 49.0) / (1680 - 1480);
+    } else if (targetRPM <= 1880) {
+        expectedDBA = 52.0 + (targetRPM - 1680) * (56.0 - 52.0) / (1880 - 1680);
+    } else {
+        expectedDBA = 56.0 + (targetRPM - 1880) * (60.0 - 56.0) / (2100 - 1880);
+    }
     
     // Debug: show what we're actually sending
     qDebug() << "RPM conversion: targetRPM=" << targetRPM << " -> speedPercent=" << speedPercent << "%";
-    
-    // Additional debug: show expected dBA
-    double expectedDBA = 36.8 + (targetRPM - 800) * (62.9 - 36.8) / (2100 - 800);
     qDebug() << "Expected dBA for" << targetRPM << "RPM:" << expectedDBA;
     
     // Use kernel driver for individual port control (more reliable)
@@ -1223,4 +1240,155 @@ bool FanProfilePage::isPortConnected(int port)
 {
     if (port < 1 || port > 4) return false;
     return m_portConnected[port - 1];
+}
+
+void FanProfilePage::onCurvePointsChanged(const QVector<QPointF> &points)
+{
+    qDebug() << "Curve points changed for Port" << m_selectedPort;
+    
+    // Save the custom curve for the currently selected port
+    m_customCurves[m_selectedPort] = points;
+    
+    // Save to config
+    saveCustomCurves();
+    
+    // Immediately apply the new curve to fan control
+    controlFanSpeeds();
+}
+
+void FanProfilePage::onPortSelectionChanged()
+{
+    // Get selected row
+    QList<QTableWidgetItem*> selectedItems = m_fanTable->selectedItems();
+    if (selectedItems.isEmpty()) {
+        return;
+    }
+    
+    int selectedRow = selectedItems.first()->row();
+    m_selectedPort = selectedRow + 1; // Convert row (0-3) to port (1-4)
+    
+    qDebug() << "Port selection changed to Port" << m_selectedPort;
+    
+    // Load the curve for this port (either custom or default)
+    if (m_customCurves.contains(m_selectedPort)) {
+        m_fanCurveWidget->setCustomCurve(m_customCurves[m_selectedPort]);
+    } else {
+        // No custom curve, use the profile default
+        QString profile = "Quiet";
+        if (m_stdSpRadio->isChecked()) profile = "Standard";
+        else if (m_highSpRadio->isChecked()) profile = "High Speed";
+        else if (m_fullSpRadio->isChecked()) profile = "Full Speed";
+        
+        QVector<QPointF> defaultCurve = getDefaultCurveForProfile(profile);
+        m_fanCurveWidget->setCustomCurve(defaultCurve);
+    }
+}
+
+void FanProfilePage::saveCustomCurves()
+{
+    QSettings settings("LConnect3", "FanCurves");
+    
+    // Save each port's custom curve
+    for (int port = 1; port <= 4; ++port) {
+        if (m_customCurves.contains(port)) {
+            QVector<QPointF> curve = m_customCurves[port];
+            
+            settings.beginWriteArray(QString("Port%1").arg(port));
+            for (int i = 0; i < curve.size(); ++i) {
+                settings.setArrayIndex(i);
+                settings.setValue("temp", curve[i].x());
+                settings.setValue("rpm", curve[i].y());
+            }
+            settings.endArray();
+        }
+    }
+    
+    qDebug() << "Saved custom curves for" << m_customCurves.size() << "ports";
+}
+
+void FanProfilePage::loadCustomCurves()
+{
+    QSettings settings("LConnect3", "FanCurves");
+    
+    // Load each port's custom curve
+    for (int port = 1; port <= 4; ++port) {
+        int size = settings.beginReadArray(QString("Port%1").arg(port));
+        if (size > 0) {
+            QVector<QPointF> curve;
+            for (int i = 0; i < size; ++i) {
+                settings.setArrayIndex(i);
+                double temp = settings.value("temp").toDouble();
+                double rpm = settings.value("rpm").toDouble();
+                curve.append(QPointF(temp, rpm));
+            }
+            m_customCurves[port] = curve;
+            qDebug() << "Loaded custom curve for Port" << port << "with" << size << "points";
+        }
+        settings.endArray();
+    }
+    
+    // Load the curve for Port 1 (default selection)
+    if (m_customCurves.contains(1)) {
+        m_fanCurveWidget->setCustomCurve(m_customCurves[1]);
+    }
+}
+
+QVector<QPointF> FanProfilePage::getDefaultCurveForProfile(const QString &profile)
+{
+    QVector<QPointF> curvePoints;
+    
+    if (profile == "Quiet") {
+        curvePoints << QPointF(0, 120) << QPointF(25, 420) << QPointF(45, 840) 
+                   << QPointF(65, 1050) << QPointF(80, 1680) << QPointF(90, 2100) << QPointF(100, 2100);
+    } else if (profile == "Standard") {
+        curvePoints << QPointF(0, 120) << QPointF(25, 420) << QPointF(40, 1050) << QPointF(55, 1260) 
+                   << QPointF(70, 1680) << QPointF(90, 2100) << QPointF(100, 2100);
+    } else if (profile == "High Speed") {
+        curvePoints << QPointF(0, 120) << QPointF(25, 910) << QPointF(35, 1140) << QPointF(50, 1470)
+                   << QPointF(70, 1800) << QPointF(85, 2100) << QPointF(100, 2100);
+    } else if (profile == "Full Speed") {
+        curvePoints << QPointF(0, 120) << QPointF(25, 2100) << QPointF(40, 2100) << QPointF(55, 2100)
+                   << QPointF(70, 2100) << QPointF(90, 2100) << QPointF(100, 2100);
+    } else {
+        // Default to Quiet
+        curvePoints << QPointF(0, 120) << QPointF(25, 420) << QPointF(45, 840) 
+                   << QPointF(65, 1050) << QPointF(80, 1680) << QPointF(90, 2100) << QPointF(100, 2100);
+    }
+    
+    return curvePoints;
+}
+
+int FanProfilePage::calculateRPMForCustomCurve(int port, int temperature)
+{
+    // Check if this port has a custom curve
+    if (!m_customCurves.contains(port)) {
+        // No custom curve, use the profile default
+        return calculateRPMForTemperature(temperature);
+    }
+    
+    QVector<QPointF> curvePoints = m_customCurves[port];
+    
+    if (curvePoints.size() < 2) {
+        return 0;
+    }
+    
+    // Clamp temperature to valid range
+    temperature = qMax(0, qMin(100, temperature));
+    
+    // Find the two points to interpolate between
+    for (int i = 0; i < curvePoints.size() - 1; ++i) {
+        if (temperature >= curvePoints[i].x() && temperature <= curvePoints[i + 1].x()) {
+            // Linear interpolation between the two points
+            double t = (temperature - curvePoints[i].x()) / (curvePoints[i + 1].x() - curvePoints[i].x());
+            double rpm = curvePoints[i].y() + t * (curvePoints[i + 1].y() - curvePoints[i].y());
+            return static_cast<int>(rpm);
+        }
+    }
+    
+    // If temperature is outside the curve range, clamp to nearest point
+    if (temperature < curvePoints.first().x()) {
+        return static_cast<int>(curvePoints.first().y());
+    } else {
+        return static_cast<int>(curvePoints.last().y());
+    }
 }

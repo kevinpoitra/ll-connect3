@@ -1,4 +1,4 @@
-# L-Connect 3 Linux Driver & Application
+# <img src="resources/logo.png" width="50" align="center"/> Linux L-Connect 3 Driver & Application
 
 A complete Linux solution for Lian Li L-Connect 3 fan controllers, providing both kernel driver support and a Qt-based GUI application that closely mimics the original Windows application.
 
@@ -9,18 +9,28 @@ A complete Linux solution for Lian Li L-Connect 3 fan controllers, providing bot
 - **RGB Lighting**: Full RGB lighting control and effects
 - **Multiple Protocols**: Support for both 0xE0 and 0x02 HID protocols
 - **Per-Port Control**: Individual control of up to 4 fan ports
-- **Performance**: Matches or exceeds Windows L-Connect 3 performance
 
 ### Qt Application
 - **System Monitoring**: Real-time CPU, GPU, RAM, Network, and Storage monitoring
-- **Fan Control GUI**: Visual fan speed control with profiles
-- **RGB Control**: Lighting effects and color management
+
+<img src="docs/screenshots/systeminfo.png" width="600"/> 
+
+- **Advanced Fan Control**: 
+  - Per-port custom fan curves with drag-and-drop curve editor
+  - Real-time fan speed adjustments with immediate response
+  - 4 optimized profiles: Quiet, StdSP, HighSP, FullSP (all dBA-calibrated)
+  - Per-port curve storage with persistent configuration
+  - "Apply To All" and "Default" buttons for easy curve management
+  - 840 RPM minimum safety enforcement to prevent fan shutdown
+
+<img src="docs/screenshots/fanprofile.png" width="600"/> 
+
+- **RGB Lighting Control**: Built-in lighting effects page with 18+ effects, speed, brightness, and direction controls (hardware integration coming soon, or use OpenRGB for immediate RGB control)
 - **Settings**: Theme customization and system integration
 
 ## 📋 Supported Devices
 
 - **Lian Li SL-Infinity Hub** (VID: 0x0CF2, PID: 0xA102)
-- **Lian Li UNI HUB ALv2** (VID: 0x0CF2, PID: 0xA101)
 
 ## 🚀 Installation
 
@@ -55,28 +65,39 @@ ls -la /proc/Lian_li_SL_INFINITY/
 
 ### Step 2: Install L-Connect3 Application
 
-1. **Install Qt dependencies:**
+1. **Install Qt dependencies and monitoring tools:**
    ```bash
    # Ubuntu/Debian
-   sudo apt install qt6-base-dev qt6-charts-dev cmake build-essential
+   sudo apt install qt6-base-dev qt6-charts-dev cmake build-essential \
+                    lm-sensors
+   
+   # Optional GPU monitoring tools (install based on your GPU):
+   # For NVIDIA: nvidia-smi (included with nvidia drivers)
+   # For AMD: sudo apt install radeontop
+   # For Intel: sudo apt install intel-gpu-tools
    
    # Fedora
-   sudo dnf install qt6-qtbase-devel qt6-qtcharts-devel cmake gcc-c++
+   sudo dnf install qt6-qtbase-devel qt6-qtcharts-devel cmake gcc-c++ \
+                    lm_sensors
    
    # Arch Linux
-   sudo pacman -S qt6-base qt6-charts cmake base-devel
+   sudo pacman -S qt6-base qt6-charts cmake base-devel \
+                  lm_sensors
    ```
 
-2. **Build the application:**
+2. **Configure sensors (first time only):**
+   ```bash
+   sudo sensors-detect
+   # Press ENTER to accept defaults, YES at the end to save
+   sensors  # Test that sensors work
+   ```
+
+3. **Build the application:**
    ```bash
    cd ll-connect3
    mkdir build && cd build
    cmake ..
    make -j$(nproc)
-   ```
-
-3. **Install the application:**
-   ```bash
    sudo make install
    ```
 
@@ -115,12 +136,25 @@ ls -la /proc/Lian_li_SL_INFINITY/
 
 ## 📊 Performance
 
-### Fan Performance
+### Fan Performance (dBA-Calibrated)
 
-- **Peak Performance**: 62.8 dBA (better than Windows 62.6 dBA)
-- **Sustained Performance**: 61.4-61.7 dBA (within 1.2 dBA of Windows)
-- **Speed Range**: 800-2100 RPM (0-100% control)
-- **Response Time**: Immediate fan speed changes
+Based on real-world measurements matching Windows L-Connect:
+
+| RPM  | Percentage | dBA | Profile Usage |
+|------|------------|-----|---------------|
+| 120  | 6%         | ~30 | Idle minimum  |
+| 840  | 40%        | 34  | Quiet minimum |
+| 1050 | 50%        | 39  | Standard base |
+| 1260 | 60%        | 45  | Standard mid  |
+| 1480 | 70%        | 49  | High Speed    |
+| 1680 | 80%        | 52  | High cooling  |
+| 1880 | 90%        | 56  | Near max      |
+| 2100 | 100%       | 60  | Maximum       |
+
+- **Speed Range**: 120-2100 RPM (6-100% control)
+- **Safety Minimum**: 840 RPM enforced (prevents fan shutdown)
+- **Response Time**: Real-time adjustments with <50ms latency
+- **Calibration**: Exact dBA parity with Windows L-Connect 3
 
 ### System Efficiency
 
@@ -145,7 +179,12 @@ cat /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
 
 ### RGB Lighting Control
 
-**RGB control is now handled by OpenRGB** (no conflicts with fan control):
+The L-Connect3 app includes a **built-in Lighting page** with:
+- 18+ lighting effects (Rainbow, Static, Breathing, Meteor, etc.)
+- Speed, brightness, and direction controls
+- Visual effect preview
+
+**Hardware integration note**: The lighting controls are currently UI-only. For active RGB control, you can use **OpenRGB** which works alongside our fan control:
 
 1. **Install OpenRGB:**
    ```bash
@@ -157,7 +196,7 @@ cat /proc/Lian_li_SL_INFINITY/Port_1/fan_speed
    openrgb
    ```
 
-3. **Control RGB lighting** through OpenRGB's GUI while fan control works via kernel driver
+3. **Control RGB lighting** through OpenRGB while fan control continues working via L-Connect3
 
 ### GUI Application
 
@@ -167,10 +206,17 @@ LConnect3
 ```
 
 The GUI provides:
-- Real-time system monitoring
-- Visual fan speed control
-- RGB lighting management
-- Settings and configuration
+- **Real-time System Monitoring**: CPU, GPU, RAM, Network, Storage with live graphs
+- **Advanced Fan Control**:
+  - Drag-and-drop curve editor for each port
+  - Per-port custom curves (each fan can have unique settings)
+  - 4 optimized profiles: Quiet, StdSP, HighSP, FullSP
+  - Real-time fan speed preview and adjustments
+  - "Apply To All" to copy curves between ports
+  - "Default" button to restore profile defaults
+  - Persistent curve storage (saves across restarts)
+- **RGB Lighting Page**: Built-in UI with 18+ effects, speed/brightness controls (use OpenRGB for hardware control)
+- **Settings and Themes**: Dark/light modes and system integration
 
 ## 🔧 Uninstallation
 

@@ -65,24 +65,42 @@
        <property name="bottomMargin">
         <number>0</number>
        </property>
-       <item>
+       <item alignment="Qt::AlignHCenter">
         <widget class="QFrame" name="logoBadge">
          <property name="minimumSize">
           <size>
            <width>0</width>
-           <height>60</height>
+           <height>90</height>
           </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>180</width>
+           <height>16777215</height>
+          </size>
+         </property>
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
          </property>
                  <property name="styleSheet">
                   <string notr="true">QFrame#logoBadge {
             background-color: #081536;
             border: none;
-            margin: 15px 10px;
+            margin: 15px 0px;
             padding: 10px;
         }</string>
                  </property>
-         <layout class="QHBoxLayout" name="logoLayout">
-          <item>
+         <layout class="QVBoxLayout" name="logoLayout">
+          <property name="spacing">
+           <number>8</number>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignHCenter|Qt::AlignVCenter</set>
+          </property>
+          <item alignment="Qt::AlignHCenter">
            <widget class="QLabel" name="logoInitialLabel">
             <property name="text">
              <string></string>
@@ -95,15 +113,24 @@
             </property>
             <property name="minimumSize">
              <size>
-              <width>24</width>
-              <height>24</height>
+              <width>50</width>
+              <height>50</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
-              <width>24</width>
-              <height>24</height>
+              <width>50</width>
+              <height>50</height>
              </size>
+            </property>
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
             </property>
             <property name="styleSheet">
              <string notr="true">QLabel#logoInitialLabel {
@@ -112,10 +139,19 @@
             </property>
            </widget>
           </item>
-          <item>
+          <item alignment="Qt::AlignHCenter">
            <widget class="QLabel" name="logoLabel">
             <property name="text">
              <string>L-CONNECT 3</string>
+            </property>
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
             </property>
             <property name="styleSheet">
              <string notr="true">QLabel#logoLabel {

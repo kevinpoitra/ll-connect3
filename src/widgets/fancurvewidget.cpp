@@ -21,6 +21,7 @@ FanCurveWidget::FanCurveWidget(QWidget *parent)
     , m_rpmMax(2100)
     , m_dragging(false)
     , m_draggedPoint(-1)
+    , m_graphEnabled(true)
     , m_backgroundColor(QColor(26, 26, 26))
     , m_gridColor(QColor(60, 60, 60))
     , m_axisColor(QColor(200, 200, 200))
@@ -51,13 +52,25 @@ void FanCurveWidget::setCurrentRPM(int rpm)
     update();
 }
 
+void FanCurveWidget::setGraphEnabled(bool enabled)
+{
+    m_graphEnabled = enabled;
+    update();
+}
+
+void FanCurveWidget::setCustomCurve(const QVector<QPointF> &points)
+{
+    m_curvePoints = points;
+    update();
+}
+
 void FanCurveWidget::setupCurveData()
 {
     m_curvePoints.clear();
     
     if (m_profile == "Quiet") {
         // Data points for 120mm fans (max 2100 RPM)
-        m_curvePoints << QPointF(0, 0);
+        m_curvePoints << QPointF(0, 120);     // 0°C: 120 RPM minimum
         m_curvePoints << QPointF(25, 420);
         m_curvePoints << QPointF(45, 840);
         m_curvePoints << QPointF(65, 1050);
@@ -65,40 +78,35 @@ void FanCurveWidget::setupCurveData()
         m_curvePoints << QPointF(90, 2100);
         m_curvePoints << QPointF(100, 2100);
     } else if (m_profile == "Standard") {
-        // More aggressive curve for Standard
-        m_curvePoints << QPointF(0, 200);
-        m_curvePoints << QPointF(20, 500);
-        m_curvePoints << QPointF(40, 1000);
-        m_curvePoints << QPointF(60, 1400);
-        m_curvePoints << QPointF(75, 1800);
-        m_curvePoints << QPointF(85, 2100);
+        // Standard Speed curve (StdSP) - Balanced curve
+        m_curvePoints << QPointF(0, 120);     // 0°C: 120 RPM minimum
+        m_curvePoints << QPointF(25, 420);    // 25°C: 420 RPM (34 dBA)
+        m_curvePoints << QPointF(40, 1050);   // 40°C: 1050 RPM (39 dBA)
+        m_curvePoints << QPointF(55, 1260);   // 55°C: 1260 RPM (45 dBA)
+        m_curvePoints << QPointF(70, 1680);   // 70°C: 1680 RPM (52 dBA)
+        m_curvePoints << QPointF(90, 2100);   // 90°C: 2100 RPM (60 dBA)
+        m_curvePoints << QPointF(100, 2100);  // 100°C: 2100 RPM (60 dBA)
     } else if (m_profile == "High Speed") {
-        // Very aggressive curve
-        m_curvePoints << QPointF(0, 300);
-        m_curvePoints << QPointF(15, 800);
-        m_curvePoints << QPointF(35, 1300);
-        m_curvePoints << QPointF(55, 1800);
-        m_curvePoints << QPointF(70, 2100);
-        m_curvePoints << QPointF(80, 2100);
+        // High Speed curve (HighSP) - Smooth progressive ramp
+        m_curvePoints << QPointF(0, 120);     // 0°C: 120 RPM minimum
+        m_curvePoints << QPointF(25, 910);    // 25°C: 910 RPM (~36 dBA)
+        m_curvePoints << QPointF(35, 1140);   // 35°C: 1140 RPM (~42 dBA)
+        m_curvePoints << QPointF(50, 1470);   // 50°C: 1470 RPM (~48 dBA)
+        m_curvePoints << QPointF(70, 1800);   // 70°C: 1800 RPM (~55 dBA)
+        m_curvePoints << QPointF(85, 2100);   // 85°C: 2100 RPM (60 dBA)
+        m_curvePoints << QPointF(100, 2100);  // 100°C: 2100 RPM (60 dBA)
     } else if (m_profile == "Full Speed") {
-        // Maximum speed curve
-        m_curvePoints << QPointF(0, 800);
-        m_curvePoints << QPointF(10, 1200);
-        m_curvePoints << QPointF(30, 1800);
-        m_curvePoints << QPointF(50, 2100);
-        m_curvePoints << QPointF(70, 2100);
-        m_curvePoints << QPointF(90, 2100);
-    } else if (m_profile == "MB RPM Sync") {
-        // Custom curve for MB RPM Sync
-        m_curvePoints << QPointF(0, 100);
-        m_curvePoints << QPointF(30, 400);
-        m_curvePoints << QPointF(50, 800);
-        m_curvePoints << QPointF(70, 1400);
-        m_curvePoints << QPointF(85, 1900);
-        m_curvePoints << QPointF(95, 2100);
+        // Maximum speed curve - instant max cooling
+        m_curvePoints << QPointF(0, 120);     // 0°C: 120 RPM minimum
+        m_curvePoints << QPointF(25, 2100);   // 25°C: 2100 RPM (60 dBA) - instant max
+        m_curvePoints << QPointF(40, 2100);   // 40°C: 2100 RPM (60 dBA)
+        m_curvePoints << QPointF(55, 2100);   // 55°C: 2100 RPM (60 dBA)
+        m_curvePoints << QPointF(70, 2100);   // 70°C: 2100 RPM (60 dBA)
+        m_curvePoints << QPointF(90, 2100);   // 90°C: 2100 RPM (60 dBA)
+        m_curvePoints << QPointF(100, 2100);  // 100°C: 2100 RPM (60 dBA)
     } else {
         // Default to Quiet (original Lian Li curve)
-        m_curvePoints << QPointF(0, 0);
+        m_curvePoints << QPointF(0, 120);     // 0°C: 120 RPM minimum
         m_curvePoints << QPointF(25, 420);
         m_curvePoints << QPointF(45, 840);
         m_curvePoints << QPointF(65, 1050);
@@ -118,6 +126,11 @@ void FanCurveWidget::paintEvent(QPaintEvent *event)
     // Fill background
     painter.fillRect(rect(), m_backgroundColor);
     
+    // Apply opacity if graph is disabled
+    if (!m_graphEnabled) {
+        painter.setOpacity(0.3);
+    }
+    
     // Calculate graph area
     QRect graphRect = rect().adjusted(m_marginLeft, m_marginTop, -m_marginRight, -m_marginBottom);
     
@@ -135,6 +148,7 @@ void FanCurveWidget::paintEvent(QPaintEvent *event)
     
     // Draw current temperature line
     drawCurrentLine(painter);
+    
 }
 
 void FanCurveWidget::drawGrid(QPainter &painter)
@@ -331,6 +345,7 @@ QPointF FanCurveWidget::pixelToData(const QPointF &pixelPoint)
 
 void FanCurveWidget::mousePressEvent(QMouseEvent *event)
 {
+    
     if (event->button() == Qt::LeftButton) {
         QPointF clickPoint = event->pos();
         QPointF dataPoint = pixelToData(clickPoint);
@@ -349,13 +364,19 @@ void FanCurveWidget::mousePressEvent(QMouseEvent *event)
 
 void FanCurveWidget::mouseMoveEvent(QMouseEvent *event)
 {
+    
     if (m_dragging && m_draggedPoint >= 0) {
         QPointF clickPoint = event->pos();
         QPointF dataPoint = pixelToData(clickPoint);
         
-        // Clamp values to valid ranges
+        // Clamp temperature to valid range
         dataPoint.setX(qMax(m_tempMin, qMin(m_tempMax, dataPoint.x())));
-        dataPoint.setY(qMax(m_rpmMin, qMin(m_rpmMax, dataPoint.y())));
+        
+        // Clamp RPM with special handling:
+        // - First point (0°C idle): can be as low as 120 RPM
+        // - All other points: minimum 840 RPM to prevent fan shutdown
+        double minRPM = (m_draggedPoint == 0) ? 120.0 : 840.0;
+        dataPoint.setY(qMax(minRPM, qMin((double)m_rpmMax, dataPoint.y())));
         
         m_curvePoints[m_draggedPoint] = dataPoint;
         update();
@@ -365,6 +386,10 @@ void FanCurveWidget::mouseMoveEvent(QMouseEvent *event)
 void FanCurveWidget::mouseReleaseEvent(QMouseEvent *event)
 {
     Q_UNUSED(event)
+    if (m_dragging) {
+        // Emit signal that curve has changed
+        emit curvePointsChanged(m_curvePoints);
+    }
     m_dragging = false;
     m_draggedPoint = -1;
 }

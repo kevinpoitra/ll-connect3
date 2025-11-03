@@ -12,6 +12,8 @@
 #include <QIcon>
 #include <QTabBar>
 #include <QList>
+#include <QSettings>
+#include <QCloseEvent>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -31,8 +33,14 @@ MainWindow::MainWindow(QWidget *parent)
     // Set window properties with proper size policies
     setWindowTitle("LL-Connect 3");
     setMinimumSize(900, 510);
-    // Start near the reference screenshot size
-    resize(900, 510);
+    
+    // Restore window geometry from settings
+    QSettings settings("LianLi", "LConnect3");
+    QByteArray geometry = settings.value("windowGeometry").toByteArray();
+    if (!geometry.isEmpty()) {
+        restoreGeometry(geometry);
+    }
+    // Window will use minimum size (900x510) if no saved geometry exists
     
     // Set window icon
     setWindowIcon(QIcon(":/icons/resources/logo.png"));
@@ -43,7 +51,18 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    // Save window geometry before destruction
+    QSettings settings("LianLi", "LConnect3");
+    settings.setValue("windowGeometry", saveGeometry());
     delete ui;
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    // Save window geometry when closing
+    QSettings settings("LianLi", "LConnect3");
+    settings.setValue("windowGeometry", saveGeometry());
+    event->accept();
 }
 
 void MainWindow::setupUI()

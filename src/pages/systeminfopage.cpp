@@ -36,7 +36,7 @@ void SystemInfoPage::setupUI()
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     
     m_mainLayout = new QVBoxLayout(this);
-    m_mainLayout->setContentsMargins(18, 16, 18, 18);
+    m_mainLayout->setContentsMargins(18, 16, 18, 10); // Reduced bottom margin to bring up bottom of window
     m_mainLayout->setSpacing(14);
 
     // Header
@@ -58,16 +58,16 @@ void SystemInfoPage::setupUI()
 
     m_mainLayout->addLayout(m_headerLayout);
 
-    // Content layout with proper size policies
+    // Content layout: 2 columns, CPU/GPU top row, RAM/Network/Storage bottom row
     m_contentGrid = new QGridLayout();
     m_contentGrid->setHorizontalSpacing(8);
     m_contentGrid->setVerticalSpacing(8);
-    // Give the right column a bit more share so its left edge moves left
     m_contentGrid->setColumnStretch(0, 1);
     m_contentGrid->setColumnStretch(1, 2);
-    m_contentGrid->setRowStretch(0, 3);
-    m_contentGrid->setRowStretch(1, 0);
-    m_contentGrid->setRowStretch(2, 2);
+    m_contentGrid->setRowStretch(0, 3); // Top row with CPU, GPU
+    m_contentGrid->setRowStretch(1, 0); // Divider
+    m_contentGrid->setRowStretch(2, 2); // Bottom row with RAM, Network, Storage
+    m_contentGrid->setRowMinimumHeight(2, 230); // Reduced to bring up bottom of window
     m_contentGrid->setSizeConstraint(QLayout::SetDefaultConstraint);
 
     m_mainLayout->addLayout(m_contentGrid);
@@ -149,16 +149,12 @@ void SystemInfoPage::createMonitoringCards()
     cpuPanelLayout->setContentsMargins(0, -18, 0, 6);
     cpuPanelLayout->setSpacing(2);
 
-    QLabel *cpuHeader = new QLabel("CPU");
-    cpuHeader->setObjectName("cpuHeading");
-    cpuPanelLayout->addWidget(cpuHeader);
-
-    // CPU main content: strict 2x2 grid
+    // CPU main content: strict 2x2 grid - all spacing must match GPU exactly
+    // Header will be moved below the circle for stability
     QGridLayout *cpuGrid = new QGridLayout();
     cpuGrid->setHorizontalSpacing(14);
-    cpuGrid->setVerticalSpacing(10);
+    cpuGrid->setVerticalSpacing(20); // Match GPU exactly
     cpuGrid->setContentsMargins(8, -92, 0, 0);
-    cpuGrid->setVerticalSpacing(20); // Increased vertical spacing
 
     // Left column: CPU circle
     m_cpuLoadCard = new MonitoringCard(MonitoringCard::CircularProgress, "CPU LOAD");
@@ -167,10 +163,15 @@ void SystemInfoPage::createMonitoringCards()
     m_cpuLoadCard->setValue("3%");
     cpuGrid->addWidget(m_cpuLoadCard, 0, 0, Qt::AlignLeft | Qt::AlignTop);
 
-    // Below circle: metrics (temp + clock)
+    // Below circle: header label and metrics (temp + clock) - exact same positioning as GPU
     QVBoxLayout *cpuMetricsColumn = new QVBoxLayout();
-    cpuMetricsColumn->setSpacing(0); // No spacing between temp and clock
-    cpuMetricsColumn->setContentsMargins(0, 10, 0, 0); // Add top margin to push down
+    cpuMetricsColumn->setSpacing(0); // No spacing between elements
+    cpuMetricsColumn->setContentsMargins(0, 30, 0, 0); // Increased top margin to push text lower below circle
+    
+    // CPU header label below circle
+    QLabel *cpuHeader = new QLabel("CPU");
+    cpuHeader->setObjectName("cpuHeading");
+    cpuMetricsColumn->addWidget(cpuHeader);
     
     // Temperature line - simple label and value
     QHBoxLayout *tempLine = new QHBoxLayout();
@@ -203,21 +204,26 @@ void SystemInfoPage::createMonitoringCards()
     clockLine->addStretch(); // Push content to the left
     
     cpuMetricsColumn->addLayout(clockLine);
-    cpuGrid->addLayout(cpuMetricsColumn, 1, 0);
+    cpuGrid->addLayout(cpuMetricsColumn, 1, 0, Qt::AlignLeft | Qt::AlignTop);
     cpuGrid->setColumnMinimumWidth(1, 120); // Ensure enough space for metrics
+    cpuGrid->setRowMinimumHeight(0, 180); // Match GPU row 0 height for consistent circle positioning
     cpuGrid->setRowMinimumHeight(1, 60); // Ensure enough vertical space for metrics
 
-    // Right column: power over voltage
+    // Right column: power over voltage - must match GPU card sizes exactly
     m_cpuPowerCard = new MonitoringCard(MonitoringCard::RectangularValue, "CPU POWERS");
     m_cpuPowerCard->setColor(QColor(45, 166, 255));
     m_cpuPowerCard->setValue("-- W");
     m_cpuPowerCard->setMinimumWidth(150);
+    m_cpuPowerCard->setMinimumHeight(90); // Match GPU power card for alignment
+    m_cpuPowerCard->setMaximumHeight(120); // Match GPU power card for alignment
     cpuGrid->addWidget(m_cpuPowerCard, 0, 1, Qt::AlignTop);
 
     m_cpuVoltageCard = new MonitoringCard(MonitoringCard::RectangularValue, "CPU VOLTAGES");
     m_cpuVoltageCard->setColor(QColor(45, 166, 255));
     m_cpuVoltageCard->setValue("-- V");
     m_cpuVoltageCard->setMinimumWidth(150);
+    m_cpuVoltageCard->setMinimumHeight(90); // Match GPU memory card height for alignment
+    m_cpuVoltageCard->setMaximumHeight(120); // Match GPU memory card height for alignment
     cpuGrid->addWidget(m_cpuVoltageCard, 1, 1, Qt::AlignTop);
 
     cpuGrid->setColumnStretch(0, 2);
@@ -233,26 +239,27 @@ void SystemInfoPage::createMonitoringCards()
     gpuPanelLayout->setContentsMargins(0, -18, 0, 6);
     gpuPanelLayout->setSpacing(2);
 
-    QLabel *gpuHeader = new QLabel("GPU");
-    gpuHeader->setObjectName("gpuHeading");
-    gpuPanelLayout->addWidget(gpuHeader);
-
-    // GPU main content: strict 2x2 grid mirroring CPU
+    // GPU main content: strict 2x2 grid - all spacing must match CPU exactly
+    // Header will be moved below the circle for stability
     QGridLayout *gpuGrid = new QGridLayout();
     gpuGrid->setHorizontalSpacing(14);
-    gpuGrid->setVerticalSpacing(10);
+    gpuGrid->setVerticalSpacing(20); // Match CPU exactly
     gpuGrid->setContentsMargins(8, -92, 0, 0);
-    gpuGrid->setVerticalSpacing(20); // Increased vertical spacing
 
     // Left column: GPU circle
     m_gpuLoadCard = new MonitoringCard(MonitoringCard::CircularProgress, "GPU LOAD");
     m_gpuLoadCard->setColor(QColor(62, 219, 141));
     gpuGrid->addWidget(m_gpuLoadCard, 0, 0, Qt::AlignLeft | Qt::AlignTop);
 
-    // Below circle: GPU metrics
+    // Below circle: header label and GPU metrics - exact same positioning as CPU
     QVBoxLayout *gpuMetricsColumn = new QVBoxLayout();
-    gpuMetricsColumn->setSpacing(0); // No spacing between temp and clock
-    gpuMetricsColumn->setContentsMargins(0, 10, 0, 0); // Add top margin to push down
+    gpuMetricsColumn->setSpacing(0); // No spacing between elements
+    gpuMetricsColumn->setContentsMargins(0, 30, 0, 0); // Increased top margin to push text lower below circle
+
+    // GPU header label below circle
+    QLabel *gpuHeader = new QLabel("GPU");
+    gpuHeader->setObjectName("gpuHeading");
+    gpuMetricsColumn->addWidget(gpuHeader);
 
     QHBoxLayout *gpuTempLine = new QHBoxLayout();
     gpuTempLine->setSpacing(8);
@@ -276,14 +283,17 @@ void SystemInfoPage::createMonitoringCards()
     gpuClockLine->addStretch();
     gpuMetricsColumn->addLayout(gpuClockLine);
 
-    gpuGrid->addLayout(gpuMetricsColumn, 1, 0);
+    gpuGrid->addLayout(gpuMetricsColumn, 1, 0, Qt::AlignLeft | Qt::AlignTop);
     gpuGrid->setColumnMinimumWidth(1, 120); // Ensure enough space for metrics
-    gpuGrid->setRowMinimumHeight(1, 60); // Ensure enough vertical space for metrics
+    gpuGrid->setRowMinimumHeight(0, 180); // Match CPU row 0 height for consistent circle positioning
+    gpuGrid->setRowMinimumHeight(1, 60); // Ensure enough vertical space for metrics - must match CPU exactly
 
-    // Right column: power over voltage
+    // Right column: power over voltage - must match CPU card sizes exactly
     m_gpuPowerCard = new MonitoringCard(MonitoringCard::RectangularValue, "GPU Powers");
     m_gpuPowerCard->setColor(QColor(62, 219, 141));
     m_gpuPowerCard->setMinimumWidth(150);
+    m_gpuPowerCard->setMinimumHeight(90); // Match CPU power card for alignment
+    m_gpuPowerCard->setMaximumHeight(120); // Match CPU power card for alignment
     gpuGrid->addWidget(m_gpuPowerCard, 0, 1, Qt::AlignTop);
 
     m_gpuMemoryCard = new MonitoringCard(MonitoringCard::RectangularValue, "GPU MEMORY");
@@ -305,51 +315,55 @@ void SystemInfoPage::createMonitoringCards()
     contentDivider->setFixedHeight(5);
     m_contentGrid->addWidget(contentDivider, 1, 0, 1, 2);
 
-
-    // RAM, Network & Storage container - all three cards in one row
+    // Bottom row: RAM, Network, Storage
     QWidget *bottomContainer = new QWidget();
-    bottomContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    bottomContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QHBoxLayout *bottomLayout = new QHBoxLayout(bottomContainer);
-    bottomLayout->setContentsMargins(0, -8, 0, 0);
-    bottomLayout->setSpacing(8); // Small spacing between cards
+    bottomLayout->setContentsMargins(0, 0, 0, 0);
+    bottomLayout->setSpacing(8);
 
-    // RAM Panel
+    // RAM Panel - matching CPU/GPU structure, but in bottom row
     QFrame *ramPanel = new QFrame();
     ramPanel->setObjectName("infoPanel");
-    ramPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
-    ramPanel->setMinimumWidth(200);
+    ramPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QVBoxLayout *ramPanelLayout = new QVBoxLayout(ramPanel);
-    ramPanelLayout->setContentsMargins(0, -20, 0, 6);
+    ramPanelLayout->setContentsMargins(0, -18, 0, 20); // Increased bottom margin to prevent clipping
     ramPanelLayout->setSpacing(2);
 
-    QLabel *ramHeader = new QLabel("RAM");
-    ramHeader->setObjectName("ramHeading");
-    ramPanelLayout->addWidget(ramHeader);
+    // RAM grid - ensure text is clearly below circle  
+    QGridLayout *ramGrid = new QGridLayout();
+    ramGrid->setHorizontalSpacing(14);
+    ramGrid->setVerticalSpacing(20); // Match CPU/GPU spacing
+    ramGrid->setContentsMargins(8, -92, 0, 15);
 
-    QHBoxLayout *ramContentRow = new QHBoxLayout();
-    ramContentRow->setSpacing(0);
-    ramContentRow->setAlignment(Qt::AlignLeft);
-    ramContentRow->setContentsMargins(0, 0, 0, 0);
-
-    QVBoxLayout *ramLeftColumn = new QVBoxLayout();
-    ramLeftColumn->setSpacing(6);
-    ramLeftColumn->setAlignment(Qt::AlignLeft);
-    ramLeftColumn->setContentsMargins(8, -92, 0, 0);
-
+    // Circle in row 0
     m_ramUsageCard = new MonitoringCard(MonitoringCard::CircularProgress, "RAM");
     m_ramUsageCard->setColor(QColor(255, 196, 49));
-    m_ramUsageCard->setFixedSize(150, 150);
-    ramLeftColumn->addWidget(m_ramUsageCard, 0, Qt::AlignLeft);
+    ramGrid->addWidget(m_ramUsageCard, 0, 0, Qt::AlignLeft | Qt::AlignTop);
 
+    // Below circle: header label and RAM details - matching CPU/GPU pattern
+    QVBoxLayout *ramMetricsColumn = new QVBoxLayout();
+    ramMetricsColumn->setSpacing(0);
+    ramMetricsColumn->setContentsMargins(0, 30, 0, 0); // Increased top margin to push text lower below circle
+
+    // RAM header label below circle
+    QLabel *ramHeader = new QLabel("RAM");
+    ramHeader->setObjectName("ramHeading");
+    ramMetricsColumn->addWidget(ramHeader);
+
+    // RAM details text
     m_ramDetailsLabel = new QLabel("-- / -- RAM");
-    m_ramDetailsLabel->setAlignment(Qt::AlignHCenter);
+    m_ramDetailsLabel->setAlignment(Qt::AlignLeft);
     m_ramDetailsLabel->setStyleSheet("color: rgba(255, 255, 255, 0.75); font-size: 11px; font-weight: 600;");
-    ramLeftColumn->addWidget(m_ramDetailsLabel);
+    ramMetricsColumn->addWidget(m_ramDetailsLabel);
 
-    ramContentRow->addLayout(ramLeftColumn, 0);
-    ramContentRow->addStretch(1);
+    ramGrid->addLayout(ramMetricsColumn, 1, 0, Qt::AlignLeft | Qt::AlignTop);
+    ramGrid->setRowMinimumHeight(0, 180); // Match CPU/GPU row 0 height
+    ramGrid->setRowMinimumHeight(1, 60);  // Match CPU/GPU row 1 height
+    ramGrid->setColumnStretch(0, 1); // Allow column to expand
 
-    ramPanelLayout->addLayout(ramContentRow);
+    ramPanelLayout->addLayout(ramGrid);
+    ramPanelLayout->addStretch(); // Add stretch to push content up and prevent clipping
     bottomLayout->addWidget(ramPanel);
 
     // Network Panel
@@ -1137,7 +1151,7 @@ void SystemInfoPage::updateRAMInfo()
             
             m_ramUsageCard->setProgress(ramUsage);
             m_ramUsageCard->setValue(QString::number(ramUsage) + "%");
-            m_ramUsageCard->setSubValue("RAM");
+            m_ramUsageCard->setSubValue(""); // Clear subValue - we show RAM stats below the circle instead
 
             const double usedGB = usedMem / 1024.0 / 1024.0;
             const double totalGB = totalMem / 1024.0 / 1024.0;
@@ -1148,7 +1162,7 @@ void SystemInfoPage::updateRAMInfo()
             // Fallback if /proc/meminfo fails
             m_ramUsageCard->setProgress(0);
             m_ramUsageCard->setValue("--%");
-            m_ramUsageCard->setSubValue("RAM");
+            m_ramUsageCard->setSubValue(""); // Clear subValue - we show RAM stats below the circle instead
             m_ramDetailsLabel->setText("-- / -- RAM");
         }
         memFile.close();

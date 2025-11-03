@@ -15,6 +15,7 @@
 QT_BEGIN_NAMESPACE
 class QAction;
 class QMenu;
+class QCloseEvent;
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
@@ -31,6 +32,9 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+
+protected:
+    void closeEvent(QCloseEvent *event) override;
 
 private slots:
     void onNavigationClicked();

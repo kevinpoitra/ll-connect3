@@ -386,20 +386,33 @@ void LightingPage::onApply()
         success = m_lianLi->setRainbowMorphEffect(m_currentSpeed, m_currentBrightness, m_directionLeft);
     } else if (m_currentEffect == "Static Color") {
         // For static color, set each port to its individual color with brightness
-        // Only use channels 0-3 for the 4 physical ports
-        // Channels 4-7 may control sub-sections and should be left alone
+        // CRITICAL: Each physical port uses TWO channels (center + outer ring LEDs)
+        // Port 1 = channels 0 & 1
+        // Port 2 = channels 2 & 3
+        // Port 3 = channels 4 & 5
+        // Port 4 = channels 6 & 7
         success = true;
         
-        // Set colors ONLY for channels 0-3 (the 4 physical ports)
         for (int port = 0; port < 4; ++port) {
             QColor color = m_portColors[port];
+            int channel1 = port * 2;      // First channel for this port
+            int channel2 = port * 2 + 1;  // Second channel for this port
             
-            qDebug() << "Setting Port" << (port + 1) << "(channel" << port << ") to color" << color << "brightness" << m_currentBrightness;
-            if (!m_lianLi->setChannelColor(port, color, m_currentBrightness)) {
-                qDebug() << "Failed to set Port" << (port + 1);
+            qDebug() << "Setting Port" << (port + 1) << "via channels" << channel1 << "&" << channel2 
+                     << "to color" << color << "brightness" << m_currentBrightness;
+            
+            // Send to both channels for this port
+            if (!m_lianLi->setChannelColor(channel1, color, m_currentBrightness)) {
+                qDebug() << "Failed to set Port" << (port + 1) << "channel" << channel1;
                 success = false;
-            } else {
-                qDebug() << "Successfully set Port" << (port + 1);
+            }
+            if (!m_lianLi->setChannelColor(channel2, color, m_currentBrightness)) {
+                qDebug() << "Failed to set Port" << (port + 1) << "channel" << channel2;
+                success = false;
+            }
+            
+            if (success) {
+                qDebug() << "✓ Successfully set Port" << (port + 1);
             }
         }
     } else if (m_currentEffect == "Breathing") {

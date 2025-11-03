@@ -5,6 +5,7 @@
 #include <QFont>
 #include <QDebug>
 #include <QColorDialog>
+#include <QSettings>
 
 LightingPage::LightingPage(QWidget *parent)
     : QWidget(parent)
@@ -28,6 +29,11 @@ LightingPage::LightingPage(QWidget *parent)
     setupUI();
     setupControls();
     setupProductDemo();
+    
+    // Load saved lighting settings
+    loadLightingSettings();
+    
+    // Update UI with loaded settings
     updateLightingPreview();
     
     // Try to initialize the device
@@ -380,15 +386,20 @@ void LightingPage::onApply()
         success = m_lianLi->setRainbowMorphEffect(m_currentSpeed, m_currentBrightness, m_directionLeft);
     } else if (m_currentEffect == "Static Color") {
         // For static color, set each port to its individual color with brightness
-        // Map ports to channels: Port 1->Channel 0, Port 2->Channel 1, Port 3->Channel 2, Port 4->Channel 3
+        // Only use channels 0-3 for the 4 physical ports
+        // Channels 4-7 may control sub-sections and should be left alone
         success = true;
+        
+        // Set colors ONLY for channels 0-3 (the 4 physical ports)
         for (int port = 0; port < 4; ++port) {
-            qDebug() << "Setting Port" << (port + 1) << "to color" << m_portColors[port] << "on channel" << port << "with brightness" << m_currentBrightness;
-            if (!m_lianLi->setChannelColor(port, m_portColors[port], m_currentBrightness)) {
-                qDebug() << "Failed to set Port" << (port + 1) << "on channel" << port;
+            QColor color = m_portColors[port];
+            
+            qDebug() << "Setting Port" << (port + 1) << "(channel" << port << ") to color" << color << "brightness" << m_currentBrightness;
+            if (!m_lianLi->setChannelColor(port, color, m_currentBrightness)) {
+                qDebug() << "Failed to set Port" << (port + 1);
                 success = false;
             } else {
-                qDebug() << "Successfully set Port" << (port + 1) << "on channel" << port;
+                qDebug() << "Successfully set Port" << (port + 1);
             }
         }
     } else if (m_currentEffect == "Breathing") {
@@ -402,6 +413,8 @@ void LightingPage::onApply()
     
     if (success) {
         qDebug() << "✓ Successfully applied effect:" << m_currentEffect;
+        // Save settings after successful apply
+        saveLightingSettings();
     } else {
         qDebug() << "✗ Failed to apply effect:" << m_currentEffect;
     }
@@ -433,6 +446,8 @@ void LightingPage::onColorButtonClicked()
         m_portColors[portIndex] = newColor;
         updateColorButton(portIndex);
         updateLightingPreview();
+        // Save settings when color changes
+        saveLightingSettings();
     }
 }
 
@@ -444,4 +459,81 @@ void LightingPage::updateColorButton(int portIndex)
     QString style = QString("QPushButton { background-color: %1; border: 2px solid #555555; border-radius: 4px; }")
                    .arg(color.name());
     m_colorButtons[portIndex]->setStyleSheet(style);
+}
+
+void LightingPage::saveLightingSettings()
+{
+    QSettings settings("LConnect3", "Lighting");
+    
+    // Save basic settings
+    settings.setValue("Effect", m_currentEffect);
+    settings.setValue("Speed", m_currentSpeed);
+    settings.setValue("Brightness", m_currentBrightness);
+    settings.setValue("DirectionLeft", m_directionLeft);
+    
+    // Save port colors
+    settings.beginWriteArray("PortColors");
+    for (int i = 0; i < 4; ++i) {
+        settings.setArrayIndex(i);
+        settings.setValue("R", m_portColors[i].red());
+        settings.setValue("G", m_portColors[i].green());
+        settings.setValue("B", m_portColors[i].blue());
+    }
+    settings.endArray();
+    
+    qDebug() << "Saved lighting settings: Effect=" << m_currentEffect 
+             << "Speed=" << m_currentSpeed 
+             << "Brightness=" << m_currentBrightness;
+}
+
+void LightingPage::loadLightingSettings()
+{
+    QSettings settings("LConnect3", "Lighting");
+    
+    // Load basic settings with defaults
+    m_currentEffect = settings.value("Effect", "Rainbow").toString();
+    m_currentSpeed = settings.value("Speed", 50).toInt();
+    m_currentBrightness = settings.value("Brightness", 100).toInt();
+    m_directionLeft = settings.value("DirectionLeft", false).toBool();
+    
+    // Load port colors
+    int size = settings.beginReadArray("PortColors");
+    for (int i = 0; i < 4 && i < size; ++i) {
+        settings.setArrayIndex(i);
+        int r = settings.value("R", 255).toInt();
+        int g = settings.value("G", 255).toInt();
+        int b = settings.value("B", 255).toInt();
+        m_portColors[i] = QColor(r, g, b);
+    }
+    settings.endArray();
+    
+    // Apply loaded settings to UI
+    m_effectCombo->setCurrentText(m_currentEffect);
+    m_speedSlider->setValue(m_currentSpeed);
+    m_brightnessSlider->setValue(m_currentBrightness);
+    
+    // Set direction buttons
+    if (m_directionLeft) {
+        m_leftDirectionBtn->setChecked(true);
+        m_rightDirectionBtn->setChecked(false);
+    } else {
+        m_leftDirectionBtn->setChecked(false);
+        m_rightDirectionBtn->setChecked(true);
+    }
+    
+    // Update color buttons
+    for (int i = 0; i < 4; ++i) {
+        updateColorButton(i);
+    }
+    
+    // Show/hide controls based on effect
+    bool isStaticColor = (m_currentEffect == "Static Color");
+    m_staticColorWidget->setVisible(isStaticColor);
+    m_speedSlider->setVisible(!isStaticColor);
+    m_directionWidget->setVisible(!isStaticColor);
+    
+    qDebug() << "Loaded lighting settings: Effect=" << m_currentEffect 
+             << "Speed=" << m_currentSpeed 
+             << "Brightness=" << m_currentBrightness
+             << "Direction=" << (m_directionLeft ? "Left" : "Right");
 }

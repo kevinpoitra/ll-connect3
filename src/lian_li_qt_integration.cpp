@@ -87,10 +87,13 @@ QString LianLiQtIntegration::getSerialNumber() const
 
 bool LianLiQtIntegration::setChannelColor(int channel, const QColor &color, int brightness)
 {
+    qDebug() << "======================================";
     qDebug() << "setChannelColor: channel=" << channel << "color=" << color << "brightness=" << brightness;
+    qDebug() << "RGB values: R=" << color.red() << "G=" << color.green() << "B=" << color.blue();
     
     if (!isChannelValid(channel) || !isConnected()) {
         qDebug() << "setChannelColor: Invalid channel or not connected. Channel valid:" << isChannelValid(channel) << "Connected:" << isConnected();
+        qDebug() << "======================================";
         return false;
     }
     
@@ -122,6 +125,7 @@ bool LianLiQtIntegration::setChannelColor(int channel, const QColor &color, int 
                 hwBrightness  // Use the actual brightness value
             );
             qDebug() << "SendCommitAction for channel" << channel << "result:" << success;
+            qDebug() << "Command sent: channel=" << channel << "effect=0x01 speed=0x00 direction=0x00 brightness=" << hwBrightness;
             
             if (success) {
                 emit colorChanged(channel, color);
@@ -129,6 +133,8 @@ bool LianLiQtIntegration::setChannelColor(int channel, const QColor &color, int 
         }
     }
     
+    qDebug() << "Final result for channel" << channel << ":" << (success ? "SUCCESS" : "FAILED");
+    qDebug() << "======================================";
     return success;
 }
 

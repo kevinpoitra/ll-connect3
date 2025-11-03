@@ -38,6 +38,8 @@ private:
     void setupProductDemo();
     void updateLightingPreview();
     void updateColorButton(int portIndex);
+    void saveLightingSettings();
+    void loadLightingSettings();
     
     QVBoxLayout *m_mainLayout;
     QHBoxLayout *m_contentLayout;

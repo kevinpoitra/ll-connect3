@@ -124,6 +124,9 @@ public:
     
     // Synchronization
     bool Synchronize();
+    
+    // Commit action (needed by Qt integration for effects)
+    bool SendCommitAction(uint8_t channel, uint8_t effect, uint8_t speed, uint8_t direction, uint8_t brightness);
 
 private:
     hid_device* m_handle;
@@ -138,7 +141,6 @@ private:
     void CloseDevice();
     bool SendStartAction(uint8_t channel, uint8_t numFans);
     bool SendColorData(uint8_t channel, uint8_t numLeds, const uint8_t* ledData);
-    bool SendCommitAction(uint8_t channel, uint8_t effect, uint8_t speed, uint8_t direction, uint8_t brightness);
     std::string ReadFirmwareVersion();
     std::string ReadSerial();
     void ApplyColorLimiter(SLInfinityColor& color) const;

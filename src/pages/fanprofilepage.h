@@ -62,9 +62,12 @@ private:
     void loadCustomCurves();
     void saveCustomProfiles();
     void loadCustomProfiles();
+    void savePortProfiles();
+    void loadPortProfiles();
     QVector<QPointF> getDefaultCurveForProfile(const QString &profile);
     int calculateRPMForCustomCurve(int port, int temperature);
     QString getCurrentProfile();
+    QString getInternalProfileName(const QString &displayName);
     // Fan detection functions removed - configuration is now in Settings
     
     QVBoxLayout *m_mainLayout;
@@ -97,6 +100,9 @@ private:
     
     // Per-port custom curves (port 1-4 -> curve points)
     QMap<int, QVector<QPointF>> m_customCurves;
+    
+    // Per-port profile names (port 1-4 -> profile name like "Quiet", "StdSP", etc.)
+    QMap<int, QString> m_portProfiles;
     
     // Custom profile names and base curves
     QMap<int, QString> m_customProfileNames; // Profile 1-3 -> custom name

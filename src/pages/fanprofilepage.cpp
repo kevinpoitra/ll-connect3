@@ -36,6 +36,7 @@ FanProfilePage::FanProfilePage(QWidget *parent)
     // Initialize all ports with 120mm fan size (2100 RPM max) by default
     for (int port = 1; port <= 4; ++port) {
         m_fanSizeMaxRPM[port] = 2100;
+        m_portProfiles[port] = "Quiet"; // Initialize all ports to Quiet profile
     }
     
     // Initialize custom profile names and curves
@@ -85,19 +86,20 @@ FanProfilePage::FanProfilePage(QWidget *parent)
     // Load saved custom curves and profiles
     loadCustomCurves();
     loadCustomProfiles();
+    loadPortProfiles(); // Load saved port profile assignments
     
     // Load the last selected profile
     QSettings settings("LConnect3", "FanProfile");
     QString lastProfile = settings.value("LastSelectedProfile", "Quiet").toString();
     
-    // Select the appropriate radio button
+    // Select the appropriate radio button (handle both old internal names and new display names)
     if (lastProfile == "Quiet") {
         m_quietRadio->setChecked(true);
-    } else if (lastProfile == "Standard") {
+    } else if (lastProfile == "StdSP" || lastProfile == "Standard") {
         m_stdSpRadio->setChecked(true);
-    } else if (lastProfile == "High Speed") {
+    } else if (lastProfile == "HighSP" || lastProfile == "High Speed") {
         m_highSpRadio->setChecked(true);
-    } else if (lastProfile == "Full Speed") {
+    } else if (lastProfile == "FullSP" || lastProfile == "Full Speed") {
         m_fullSpRadio->setChecked(true);
     } else if (lastProfile == m_customProfileNames[1]) {
         m_custom1Radio->setChecked(true);
@@ -483,19 +485,29 @@ void FanProfilePage::setupControls()
 QString FanProfilePage::getCurrentProfile()
 {
     if (m_quietRadio->isChecked()) return "Quiet";
-    if (m_stdSpRadio->isChecked()) return "Standard";
-    if (m_highSpRadio->isChecked()) return "High Speed";
-    if (m_fullSpRadio->isChecked()) return "Full Speed";
+    if (m_stdSpRadio->isChecked()) return "StdSP";
+    if (m_highSpRadio->isChecked()) return "HighSP";
+    if (m_fullSpRadio->isChecked()) return "FullSP";
     if (m_custom1Radio->isChecked()) return m_customProfileNames[1];
     if (m_custom2Radio->isChecked()) return m_customProfileNames[2];
     if (m_custom3Radio->isChecked()) return m_customProfileNames[3];
     return "Quiet"; // Default
 }
 
+QString FanProfilePage::getInternalProfileName(const QString &displayName)
+{
+    // Map display names to internal names used for curves
+    if (displayName == "StdSP") return "Standard";
+    if (displayName == "HighSP") return "High Speed";
+    if (displayName == "FullSP") return "Full Speed";
+    return displayName; // Quiet, custom profiles, etc. use same name
+}
+
 void FanProfilePage::updateFanCurve()
 {
     // Update fan curve based on selected profile
-    QString profile = getCurrentProfile();
+    QString displayName = getCurrentProfile();
+    QString internalName = getInternalProfileName(displayName);
     
     // For custom profiles, load their base curve into the widget
     if (m_custom1Radio->isChecked()) {
@@ -505,8 +517,8 @@ void FanProfilePage::updateFanCurve()
     } else if (m_custom3Radio->isChecked()) {
         m_fanCurveWidget->setCustomCurve(m_customProfileCurves[3]);
     } else {
-        // Built-in profile
-        m_fanCurveWidget->setProfile(profile);
+        // Built-in profile - use internal name for widget
+        m_fanCurveWidget->setProfile(internalName);
     }
 }
 
@@ -627,6 +639,12 @@ void FanProfilePage::updateFanData()
         // Always try to get RPM from kernel driver - let user see which ports work
         int realRPM = getRealFanRPM(port);
         
+        // Profile - display the profile assigned to this port
+        QString portProfile = m_portProfiles.value(port, "Quiet");
+        QTableWidgetItem *profileItem = new QTableWidgetItem(portProfile);
+        profileItem->setFlags(profileItem->flags() & ~Qt::ItemIsEditable); // Make read-only
+        m_fanTable->setItem(row, 2, profileItem);
+        
         // Temperature with color coding (show for all ports)
         QTableWidgetItem *tempItem = new QTableWidgetItem(QString::number(currentTemp) + "°C");
         tempItem->setForeground(getTemperatureColor(currentTemp));
@@ -646,42 +664,63 @@ void FanProfilePage::updateFanData()
 
 void FanProfilePage::onProfileChanged()
 {
-    updateFanCurve();
+    QString currentProfile = getCurrentProfile();
+    
+    // Apply the selected profile to the currently selected port
+    m_portProfiles[m_selectedPort] = currentProfile;
+    
+    // Apply the profile's curve to the selected port
+    QVector<QPointF> profileCurve;
+    if (m_custom1Radio->isChecked()) {
+        profileCurve = m_customProfileCurves[1];
+        m_customCurves[m_selectedPort] = profileCurve;
+    } else if (m_custom2Radio->isChecked()) {
+        profileCurve = m_customProfileCurves[2];
+        m_customCurves[m_selectedPort] = profileCurve;
+    } else if (m_custom3Radio->isChecked()) {
+        profileCurve = m_customProfileCurves[3];
+        m_customCurves[m_selectedPort] = profileCurve;
+    } else {
+        // Built-in profile - get default curve (convert display name to internal name)
+        QString displayName = currentProfile;
+        QString internalName = getInternalProfileName(displayName);
+        profileCurve = getDefaultCurveForProfile(internalName);
+        m_customCurves[m_selectedPort] = profileCurve;
+    }
+    
+    // Update the curve widget to show the profile curve
+    m_fanCurveWidget->setCustomCurve(profileCurve);
     
     // Save the currently selected profile
-    QString currentProfile = getCurrentProfile();
     QSettings settings("LConnect3", "FanProfile");
     settings.setValue("LastSelectedProfile", currentProfile);
-    qDebug() << "Saved selected profile:" << currentProfile;
     
-    // When changing to a custom profile, apply its base curve to all ports
-    if (m_custom1Radio->isChecked() || m_custom2Radio->isChecked() || m_custom3Radio->isChecked()) {
-        int profileNum = m_custom1Radio->isChecked() ? 1 : (m_custom2Radio->isChecked() ? 2 : 3);
-        
-        // Set this custom profile's curve for the current port
-        if (!m_customCurves.contains(m_selectedPort) || m_customCurves[m_selectedPort] != m_customProfileCurves[profileNum]) {
-            // Only update if it's different
-            m_fanCurveWidget->setCustomCurve(m_customProfileCurves[profileNum]);
-        }
-    }
+    // Save port profiles
+    savePortProfiles();
+    
+    qDebug() << "Applied profile" << currentProfile << "to Port" << m_selectedPort;
+    
+    updateFanCurve();
 }
 
 void FanProfilePage::onApplyToAllClicked()
 {
-    qDebug() << "Apply To All clicked - copying Port" << m_selectedPort << "curve to all ports";
-    
-    // Get the custom curve for the currently selected port
+    QString currentProfile = getCurrentProfile();
     QVector<QPointF> currentCurve = m_fanCurveWidget->getCurvePoints();
     
-    // Apply this curve to all ports
+    qDebug() << "Apply To All clicked - applying profile" << currentProfile << "to all ports";
+    
+    // Apply the current profile and curve to all ports
     for (int port = 1; port <= 4; ++port) {
+        m_portProfiles[port] = currentProfile;
         m_customCurves[port] = currentCurve;
     }
     
-    // Save all curves
+    // Save all curves and port profiles
     saveCustomCurves();
+    savePortProfiles();
     
-    qDebug() << "Applied Port" << m_selectedPort << "curve to all 4 ports";
+    qDebug() << "Applied profile" << currentProfile << "to all 4 ports";
 }
 
 void FanProfilePage::onDefaultClicked()
@@ -709,10 +748,11 @@ void FanProfilePage::onDefaultClicked()
         qDebug() << "Reset custom profile 3 (" << m_customProfileNames[3] << ") to Quiet default";
     } else {
         // Get the current selected profile
-        QString profile = getCurrentProfile();
+        QString displayName = getCurrentProfile();
+        QString internalName = getInternalProfileName(displayName);
         
-        // Get default curve for this profile
-        defaultCurve = getDefaultCurveForProfile(profile);
+        // Get default curve for this profile (use internal name for curve lookup)
+        defaultCurve = getDefaultCurveForProfile(internalName);
         
         // Set it for the current port
         m_customCurves[m_selectedPort] = defaultCurve;
@@ -720,10 +760,14 @@ void FanProfilePage::onDefaultClicked()
         // Update the widget to show the default curve
         m_fanCurveWidget->setCustomCurve(defaultCurve);
         
+        // Update port profile name
+        m_portProfiles[m_selectedPort] = displayName;
+        
         // Save changes
         saveCustomCurves();
+        savePortProfiles();
         
-        qDebug() << "Reset Port" << m_selectedPort << "to" << profile << "default curve";
+        qDebug() << "Reset Port" << m_selectedPort << "to" << displayName << "default curve";
     }
 }
 
@@ -741,23 +785,24 @@ int FanProfilePage::calculateRPMForTemperature(int temperature)
     } else if (m_custom3Radio->isChecked()) {
         curvePoints = m_customProfileCurves[3];
     } else {
-        // Get current built-in profile
-        QString profile = getCurrentProfile();
+        // Get current built-in profile (display name) and convert to internal name
+        QString displayName = getCurrentProfile();
+        QString profile = getInternalProfileName(displayName);
     
-    if (profile == "Quiet") {
-        curvePoints << QPointF(0, 120) << QPointF(25, 420) << QPointF(45, 840) 
-                   << QPointF(65, 1050) << QPointF(80, 1680) << QPointF(90, 2100) << QPointF(100, 2100);
-    } else if (profile == "Standard") {
-        // Standard Speed (StdSP): Balanced curve
-        curvePoints << QPointF(0, 120) << QPointF(25, 420) << QPointF(40, 1050) << QPointF(55, 1260) 
-                   << QPointF(70, 1680) << QPointF(90, 2100) << QPointF(100, 2100);
-    } else if (profile == "High Speed") {
-        // High Speed (HighSP): Smooth progressive ramp
-        curvePoints << QPointF(0, 120) << QPointF(25, 910) << QPointF(35, 1140) << QPointF(50, 1470)
-                   << QPointF(70, 1800) << QPointF(85, 2100) << QPointF(100, 2100);
-    } else if (profile == "Full Speed") {
-        curvePoints << QPointF(0, 120) << QPointF(25, 2100) << QPointF(40, 2100) << QPointF(55, 2100)
-                   << QPointF(70, 2100) << QPointF(90, 2100) << QPointF(100, 2100);
+        if (profile == "Quiet") {
+            curvePoints << QPointF(0, 120) << QPointF(25, 420) << QPointF(45, 840) 
+                       << QPointF(65, 1050) << QPointF(80, 1680) << QPointF(90, 2100) << QPointF(100, 2100);
+        } else if (profile == "Standard") {
+            // Standard Speed (StdSP): Balanced curve
+            curvePoints << QPointF(0, 120) << QPointF(25, 420) << QPointF(40, 1050) << QPointF(55, 1260) 
+                       << QPointF(70, 1680) << QPointF(90, 2100) << QPointF(100, 2100);
+        } else if (profile == "High Speed") {
+            // High Speed (HighSP): Smooth progressive ramp
+            curvePoints << QPointF(0, 120) << QPointF(25, 910) << QPointF(35, 1140) << QPointF(50, 1470)
+                       << QPointF(70, 1800) << QPointF(85, 2100) << QPointF(100, 2100);
+        } else if (profile == "Full Speed") {
+            curvePoints << QPointF(0, 120) << QPointF(25, 2100) << QPointF(40, 2100) << QPointF(55, 2100)
+                       << QPointF(70, 2100) << QPointF(90, 2100) << QPointF(100, 2100);
         } else {
             // Default to Quiet (original Lian Li curve)
             curvePoints << QPointF(0, 120) << QPointF(25, 420) << QPointF(45, 840) 
@@ -1342,14 +1387,29 @@ void FanProfilePage::onPortSelectionChanged()
     if (m_customCurves.contains(m_selectedPort)) {
         m_fanCurveWidget->setCustomCurve(m_customCurves[m_selectedPort]);
     } else {
-        // No custom curve, use the profile default
-        QString profile = "Quiet";
-        if (m_stdSpRadio->isChecked()) profile = "Standard";
-        else if (m_highSpRadio->isChecked()) profile = "High Speed";
-        else if (m_fullSpRadio->isChecked()) profile = "Full Speed";
-        
-        QVector<QPointF> defaultCurve = getDefaultCurveForProfile(profile);
+        // No custom curve, use the port's assigned profile default
+        QString portProfile = m_portProfiles.value(m_selectedPort, "Quiet");
+        QString internalName = getInternalProfileName(portProfile);
+        QVector<QPointF> defaultCurve = getDefaultCurveForProfile(internalName);
         m_fanCurveWidget->setCustomCurve(defaultCurve);
+    }
+    
+    // Update the radio button to match the port's profile
+    QString portProfile = m_portProfiles.value(m_selectedPort, "Quiet");
+    if (portProfile == "Quiet") {
+        m_quietRadio->setChecked(true);
+    } else if (portProfile == "StdSP") {
+        m_stdSpRadio->setChecked(true);
+    } else if (portProfile == "HighSP") {
+        m_highSpRadio->setChecked(true);
+    } else if (portProfile == "FullSP") {
+        m_fullSpRadio->setChecked(true);
+    } else if (portProfile == m_customProfileNames[1]) {
+        m_custom1Radio->setChecked(true);
+    } else if (portProfile == m_customProfileNames[2]) {
+        m_custom2Radio->setChecked(true);
+    } else if (portProfile == m_customProfileNames[3]) {
+        m_custom3Radio->setChecked(true);
     }
 }
 
@@ -1518,6 +1578,31 @@ void FanProfilePage::loadCustomProfiles()
             m_customProfileCurves[i] = getDefaultCurveForProfile("Quiet");
         }
         settings.endArray();
+    }
+}
+
+void FanProfilePage::savePortProfiles()
+{
+    QSettings settings("LConnect3", "PortProfiles");
+    
+    // Save profile name for each port
+    for (int port = 1; port <= 4; ++port) {
+        QString profileName = m_portProfiles.value(port, "Quiet");
+        settings.setValue(QString("Port%1").arg(port), profileName);
+    }
+    
+    qDebug() << "Saved port profiles";
+}
+
+void FanProfilePage::loadPortProfiles()
+{
+    QSettings settings("LConnect3", "PortProfiles");
+    
+    // Load profile name for each port
+    for (int port = 1; port <= 4; ++port) {
+        QString profileName = settings.value(QString("Port%1").arg(port), "Quiet").toString();
+        m_portProfiles[port] = profileName;
+        qDebug() << "Loaded Port" << port << "profile:" << profileName;
     }
 }
 

@@ -9,6 +9,7 @@
 \*---------------------------------------------------------*/
 
 #include "lian_li_qt_integration.h"
+#include "utils/qtdebugutil.h"
 #include <QDebug>
 #include <QThread>
 #include <QApplication>
@@ -39,11 +40,11 @@ bool LianLiQtIntegration::initialize()
         m_wasConnected = true;
         m_deviceCheckTimer->start();
         emit deviceConnected();
-        qDebug() << "Lian Li device connected successfully";
+        DEBUG_LOG("Lian Li device connected successfully");
         return true;
     } else {
         emit errorOccurred("Failed to initialize Lian Li device");
-        qDebug() << "Failed to initialize Lian Li device";
+        DEBUG_LOG("Failed to initialize Lian Li device");
         return false;
     }
 }
@@ -87,13 +88,13 @@ QString LianLiQtIntegration::getSerialNumber() const
 
 bool LianLiQtIntegration::setChannelColor(int channel, const QColor &color, int brightness)
 {
-    qDebug() << "======================================";
-    qDebug() << "setChannelColor: channel=" << channel << "color=" << color << "brightness=" << brightness;
-    qDebug() << "RGB values: R=" << color.red() << "G=" << color.green() << "B=" << color.blue();
+    DEBUG_LOG("======================================");
+    DEBUG_LOG("setChannelColor: channel=", channel, "color=", color, "brightness=", brightness);
+    DEBUG_LOG("RGB values: R=", color.red(), "G=", color.green(), "B=", color.blue());
     
     if (!isChannelValid(channel) || !isConnected()) {
-        qDebug() << "setChannelColor: Invalid channel or not connected. Channel valid:" << isChannelValid(channel) << "Connected:" << isConnected();
-        qDebug() << "======================================";
+        DEBUG_LOG("setChannelColor: Invalid channel or not connected. Channel valid:", isChannelValid(channel), "Connected:", isConnected());
+        DEBUG_LOG("======================================");
         return false;
     }
     
@@ -105,15 +106,15 @@ bool LianLiQtIntegration::setChannelColor(int channel, const QColor &color, int 
     colors.resize(64, slColor); // Fill all 64 LEDs with the same color
     
     uint8_t hwBrightness = convertBrightness(brightness);
-    qDebug() << "Brightness conversion: input=" << brightness << "output=" << hwBrightness;
+    DEBUG_LOG("Brightness conversion: input=", brightness, "output=", hwBrightness);
     
     bool success = m_controller->SetChannelColors(static_cast<uint8_t>(channel), colors);
-    qDebug() << "SetChannelColors for channel" << channel << "result:" << success;
+    DEBUG_LOG("SetChannelColors for channel", channel, "result:", success);
     
     if (success) {
         // Set the channel mode to static color
         success = m_controller->SetChannelMode(static_cast<uint8_t>(channel), 0x01);
-        qDebug() << "SetChannelMode for channel" << channel << "result:" << success;
+        DEBUG_LOG("SetChannelMode for channel", channel, "result:", success);
         
         if (success) {
             // Send commit action for static color mode with brightness
@@ -124,8 +125,8 @@ bool LianLiQtIntegration::setChannelColor(int channel, const QColor &color, int 
                 0x00, // Direction doesn't matter for static
                 hwBrightness  // Use the actual brightness value
             );
-            qDebug() << "SendCommitAction for channel" << channel << "result:" << success;
-            qDebug() << "Command sent: channel=" << channel << "effect=0x01 speed=0x00 direction=0x00 brightness=" << hwBrightness;
+            DEBUG_LOG("SendCommitAction for channel", channel, "result:", success);
+            DEBUG_LOG("Command sent: channel=", channel, "effect=0x01 speed=0x00 direction=0x00 brightness=", hwBrightness);
             
             if (success) {
                 emit colorChanged(channel, color);
@@ -133,8 +134,8 @@ bool LianLiQtIntegration::setChannelColor(int channel, const QColor &color, int 
         }
     }
     
-    qDebug() << "Final result for channel" << channel << ":" << (success ? "SUCCESS" : "FAILED");
-    qDebug() << "======================================";
+    DEBUG_LOG("Final result for channel", channel, ":", (success ? "SUCCESS" : "FAILED"));
+    DEBUG_LOG("======================================");
     return success;
 }
 
@@ -249,7 +250,7 @@ bool LianLiQtIntegration::setRainbowEffect(int speed, int brightness, bool direc
     return allSuccess;
 }
 
-bool LianLiQtIntegration::setRainbowMorphEffect(int speed, int brightness, bool directionLeft)
+bool LianLiQtIntegration::setRainbowMorphEffect(int speed, int brightness)
 {
     if (!isConnected()) {
         return false;
@@ -257,18 +258,17 @@ bool LianLiQtIntegration::setRainbowMorphEffect(int speed, int brightness, bool 
     
     uint8_t hwSpeed = convertSpeed(speed);
     uint8_t hwBrightness = convertBrightness(brightness);
-    uint8_t hwDirection = convertDirection(directionLeft);
     
     bool allSuccess = true;
     for (int channel = 0; channel < getChannelCount(); channel++) {
         if (!isChannelValid(channel)) continue;
         
-        // Send commit action for rainbow morph effect
+        // Send commit action for rainbow morph effect (no direction control)
         bool success = m_controller->SendCommitAction(
             static_cast<uint8_t>(channel),
             0x04, // Rainbow Morph mode
             hwSpeed,
-            hwDirection,
+            0x00, // No direction control for morph
             hwBrightness
         );
         
@@ -342,7 +342,7 @@ bool LianLiQtIntegration::setRunwayEffect(int speed, int brightness, bool direct
     return allSuccess;
 }
 
-bool LianLiQtIntegration::setChannelBreathing(int channel, const QColor &color, int speed, int brightness, bool directionLeft)
+bool LianLiQtIntegration::setChannelBreathing(int channel, const QColor &color, int speed, int brightness)
 {
     if (!isConnected() || !isChannelValid(channel)) {
         return false;
@@ -352,19 +352,18 @@ bool LianLiQtIntegration::setChannelBreathing(int channel, const QColor &color, 
     std::vector<SLInfinityColor> colors = {slColor};
     uint8_t hwSpeed = convertSpeed(speed);
     uint8_t hwBrightness = convertBrightness(brightness);
-    uint8_t hwDirection = convertDirection(directionLeft);
     
     // Set the color for this channel
     if (!m_controller->SetChannelColors(static_cast<uint8_t>(channel), colors)) {
         return false;
     }
     
-    // Send commit action for breathing mode
+    // Send commit action for breathing mode (no direction control)
     bool success = m_controller->SendCommitAction(
         static_cast<uint8_t>(channel),
         0x02, // Breathing mode
         hwSpeed,
-        hwDirection,
+        0x00, // No direction control for breathing
         hwBrightness
     );
     
@@ -419,10 +418,10 @@ void LianLiQtIntegration::onDeviceCheck()
         
         if (currentlyConnected) {
             emit deviceConnected();
-            qDebug() << "Lian Li device connected";
+            DEBUG_LOG("Lian Li device connected");
         } else {
             emit deviceDisconnected();
-            qDebug() << "Lian Li device disconnected";
+            DEBUG_LOG("Lian Li device disconnected");
         }
     }
 }

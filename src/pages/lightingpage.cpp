@@ -2,10 +2,12 @@
 #include "widgets/customslider.h"
 #include "widgets/fanlightingwidget.h"
 #include "lian_li_qt_integration.h"
+#include "utils/qtdebugutil.h"
 #include <QFont>
 #include <QDebug>
 #include <QColorDialog>
 #include <QSettings>
+#include <QShowEvent>
 
 LightingPage::LightingPage(QWidget *parent)
     : QWidget(parent)
@@ -21,6 +23,12 @@ LightingPage::LightingPage(QWidget *parent)
     m_portColors[2] = QColor(255, 255, 255); // Port 3 - White
     m_portColors[3] = QColor(255, 255, 255); // Port 4 - White
     
+    // Initialize all ports as enabled by default
+    m_portEnabled[0] = true;
+    m_portEnabled[1] = true;
+    m_portEnabled[2] = true;
+    m_portEnabled[3] = true;
+    
     // Initialize Lian Li integration
     m_lianLi = new LianLiQtIntegration(this);
     connect(m_lianLi, &LianLiQtIntegration::deviceConnected, this, &LightingPage::onDeviceConnected);
@@ -33,6 +41,10 @@ LightingPage::LightingPage(QWidget *parent)
     // Load saved lighting settings
     loadLightingSettings();
     
+    // Load fan configuration and update button states
+    loadFanConfiguration();
+    updatePortButtonStates();
+    
     // Update UI with loaded settings
     updateLightingPreview();
     
@@ -40,7 +52,7 @@ LightingPage::LightingPage(QWidget *parent)
     if (m_lianLi->initialize()) {
         onDeviceConnected();
     } else {
-        qDebug() << "Lian Li device not connected";
+        DEBUG_LOG("Lian Li device not connected");
     }
 }
 
@@ -104,9 +116,15 @@ void LightingPage::setupControls()
     staticColorLayout->addWidget(colorLabel);
     
     m_colorBoxLayout = new QHBoxLayout();
-    m_colorBoxLayout->setSpacing(10);
+    m_colorBoxLayout->setSpacing(15);
     
     for (int i = 0; i < 4; ++i) {
+        // Create a vertical layout for button + label
+        QVBoxLayout *portLayout = new QVBoxLayout();
+        portLayout->setSpacing(5);
+        portLayout->setAlignment(Qt::AlignCenter);
+        
+        // Color button
         m_colorButtons[i] = new QPushButton();
         m_colorButtons[i]->setObjectName("colorButton");
         m_colorButtons[i]->setFixedSize(40, 40);
@@ -114,7 +132,16 @@ void LightingPage::setupControls()
         updateColorButton(i);
         
         connect(m_colorButtons[i], &QPushButton::clicked, this, &LightingPage::onColorButtonClicked);
-        m_colorBoxLayout->addWidget(m_colorButtons[i]);
+        
+        // Port label
+        QLabel *portLabel = new QLabel(QString("Port %1").arg(i + 1));
+        portLabel->setObjectName("portLabel");
+        portLabel->setAlignment(Qt::AlignCenter);
+        
+        portLayout->addWidget(m_colorButtons[i]);
+        portLayout->addWidget(portLabel);
+        
+        m_colorBoxLayout->addLayout(portLayout);
     }
     m_colorBoxLayout->addStretch();
     staticColorLayout->addLayout(m_colorBoxLayout);
@@ -258,6 +285,12 @@ void LightingPage::setupControls()
         #colorButton:hover {
             border-color: #2a82da;
         }
+        
+        #portLabel {
+            color: #cccccc;
+            font-size: 11px;
+            font-weight: normal;
+        }
     )");
 }
 
@@ -294,6 +327,16 @@ void LightingPage::setupProductDemo()
     )");
 }
 
+void LightingPage::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+    
+    // Reload fan configuration when the page becomes visible
+    // This ensures we pick up any changes made in Settings
+    loadFanConfiguration();
+    updatePortButtonStates();
+}
+
 void LightingPage::updateLightingPreview()
 {
     // Update the fan lighting widget with current settings
@@ -304,11 +347,9 @@ void LightingPage::updateLightingPreview()
         m_fanLightingWidget->setDirection(m_directionLeft);
         
         // Set color for effects that use it
-        if (m_currentEffect == "Static Color") {
-            // For static color, pass the port colors
+        if (m_currentEffect == "Static Color" || m_currentEffect == "Breathing") {
+            // For static color and breathing, pass the per-port colors
             m_fanLightingWidget->setPortColors(m_portColors);
-        } else if (m_currentEffect == "Breathing") {
-            m_fanLightingWidget->setColor(QColor(255, 255, 255)); // White for breathing
         } else if (m_currentEffect == "Meteor") {
             m_fanLightingWidget->setColor(QColor(100, 200, 255)); // Blue-white for meteor
         } else if (m_currentEffect == "Runway") {
@@ -325,9 +366,17 @@ void LightingPage::onEffectChanged()
     
     // Show/hide controls based on effect
     bool isStaticColor = (m_currentEffect == "Static Color");
-    m_staticColorWidget->setVisible(isStaticColor);
+    bool isRainbowMorph = (m_currentEffect == "Rainbow Morph");
+    bool isBreathing = (m_currentEffect == "Breathing");
+    
+    // Static Color and Breathing show port color buttons
+    m_staticColorWidget->setVisible(isStaticColor || isBreathing);
+    
+    // Static Color hides speed slider
     m_speedSlider->setVisible(!isStaticColor);
-    m_directionWidget->setVisible(!isStaticColor);
+    
+    // Hide direction for Static Color, Rainbow Morph, and Breathing (no direction control)
+    m_directionWidget->setVisible(!isStaticColor && !isRainbowMorph && !isBreathing);
     
     updateLightingPreview();
 }
@@ -369,21 +418,21 @@ void LightingPage::onApply()
     
     // Apply lighting settings to device if connected
     if (!m_lianLi || !m_lianLi->isConnected()) {
-        qDebug() << "Device not connected - cannot apply lighting";
+        DEBUG_LOG("Device not connected - cannot apply lighting");
         return;
     }
     
     bool success = false;
     
-    qDebug() << "Applying effect:" << m_currentEffect 
-             << "Speed:" << m_currentSpeed 
-             << "Brightness:" << m_currentBrightness 
-             << "Direction:" << (m_directionLeft ? "Left" : "Right");
+    DEBUG_LOG("Applying effect:", m_currentEffect, 
+             "Speed:", m_currentSpeed, 
+             "Brightness:", m_currentBrightness, 
+             "Direction:", (m_directionLeft ? "Left" : "Right"));
     
     if (m_currentEffect == "Rainbow") {
         success = m_lianLi->setRainbowEffect(m_currentSpeed, m_currentBrightness, m_directionLeft);
     } else if (m_currentEffect == "Rainbow Morph") {
-        success = m_lianLi->setRainbowMorphEffect(m_currentSpeed, m_currentBrightness, m_directionLeft);
+        success = m_lianLi->setRainbowMorphEffect(m_currentSpeed, m_currentBrightness);
     } else if (m_currentEffect == "Static Color") {
         // For static color, set each port to its individual color with brightness
         // CRITICAL: Each physical port uses TWO channels (center + outer ring LEDs)
@@ -394,25 +443,30 @@ void LightingPage::onApply()
         success = true;
         
         for (int port = 0; port < 4; ++port) {
+            // Skip disabled ports (no fan connected)
+            if (!m_portEnabled[port]) {
+                continue;
+            }
+            
             QColor color = m_portColors[port];
             int channel1 = port * 2;      // First channel for this port
             int channel2 = port * 2 + 1;  // Second channel for this port
             
-            qDebug() << "Setting Port" << (port + 1) << "via channels" << channel1 << "&" << channel2 
-                     << "to color" << color << "brightness" << m_currentBrightness;
+            DEBUG_LOG("Setting Port", (port + 1), "via channels", channel1, "&", channel2, 
+                     "to color", color, "brightness", m_currentBrightness);
             
             // Send to both channels for this port
             if (!m_lianLi->setChannelColor(channel1, color, m_currentBrightness)) {
-                qDebug() << "Failed to set Port" << (port + 1) << "channel" << channel1;
+                DEBUG_LOG("Failed to set Port", (port + 1), "channel", channel1);
                 success = false;
             }
             if (!m_lianLi->setChannelColor(channel2, color, m_currentBrightness)) {
-                qDebug() << "Failed to set Port" << (port + 1) << "channel" << channel2;
+                DEBUG_LOG("Failed to set Port", (port + 1), "channel", channel2);
                 success = false;
             }
             
             if (success) {
-                qDebug() << "✓ Successfully set Port" << (port + 1);
+                DEBUG_LOG("✓ Successfully set Port", (port + 1));
             }
         }
     } else if (m_currentEffect == "Breathing") {
@@ -421,20 +475,25 @@ void LightingPage::onApply()
         success = true;
         
         for (int port = 0; port < 4; ++port) {
+            // Skip disabled ports (no fan connected)
+            if (!m_portEnabled[port]) {
+                continue;
+            }
+            
             QColor color = m_portColors[port];
             int channel1 = port * 2;      // First channel for this port
             int channel2 = port * 2 + 1;  // Second channel for this port
             
-            qDebug() << "Setting Breathing for Port" << (port + 1) << "via channels" << channel1 << "&" << channel2 
-                     << "to color" << color;
+            DEBUG_LOG("Setting Breathing for Port", (port + 1), "via channels", channel1, "&", channel2, 
+                     "to color", color);
             
             // Send breathing effect to both channels for this port
-            if (!m_lianLi->setChannelBreathing(channel1, color, m_currentSpeed, m_currentBrightness, m_directionLeft)) {
-                qDebug() << "Failed to set Breathing for Port" << (port + 1) << "channel" << channel1;
+            if (!m_lianLi->setChannelBreathing(channel1, color, m_currentSpeed, m_currentBrightness)) {
+                DEBUG_LOG("Failed to set Breathing for Port", (port + 1), "channel", channel1);
                 success = false;
             }
-            if (!m_lianLi->setChannelBreathing(channel2, color, m_currentSpeed, m_currentBrightness, m_directionLeft)) {
-                qDebug() << "Failed to set Breathing for Port" << (port + 1) << "channel" << channel2;
+            if (!m_lianLi->setChannelBreathing(channel2, color, m_currentSpeed, m_currentBrightness)) {
+                DEBUG_LOG("Failed to set Breathing for Port", (port + 1), "channel", channel2);
                 success = false;
             }
         }
@@ -445,22 +504,22 @@ void LightingPage::onApply()
     }
     
     if (success) {
-        qDebug() << "✓ Successfully applied effect:" << m_currentEffect;
+        DEBUG_LOG("✓ Successfully applied effect:", m_currentEffect);
         // Save settings after successful apply
         saveLightingSettings();
     } else {
-        qDebug() << "✗ Failed to apply effect:" << m_currentEffect;
+        DEBUG_LOG("✗ Failed to apply effect:", m_currentEffect);
     }
 }
 
 void LightingPage::onDeviceConnected()
 {
-    qDebug() << "Lian Li device connected";
+    DEBUG_LOG("Lian Li device connected");
 }
 
 void LightingPage::onDeviceDisconnected()
 {
-    qDebug() << "Lian Li device disconnected";
+    DEBUG_LOG("Lian Li device disconnected");
 }
 
 void LightingPage::onColorButtonClicked()
@@ -514,9 +573,9 @@ void LightingPage::saveLightingSettings()
     }
     settings.endArray();
     
-    qDebug() << "Saved lighting settings: Effect=" << m_currentEffect 
-             << "Speed=" << m_currentSpeed 
-             << "Brightness=" << m_currentBrightness;
+    DEBUG_LOG("Saved lighting settings: Effect=", m_currentEffect, 
+             "Speed=", m_currentSpeed, 
+             "Brightness=", m_currentBrightness);
 }
 
 void LightingPage::loadLightingSettings()
@@ -559,14 +618,61 @@ void LightingPage::loadLightingSettings()
         updateColorButton(i);
     }
     
-    // Show/hide controls based on effect
+    // Show/hide controls based on effect (use same logic as onEffectChanged)
     bool isStaticColor = (m_currentEffect == "Static Color");
-    m_staticColorWidget->setVisible(isStaticColor);
-    m_speedSlider->setVisible(!isStaticColor);
-    m_directionWidget->setVisible(!isStaticColor);
+    bool isRainbowMorph = (m_currentEffect == "Rainbow Morph");
+    bool isBreathing = (m_currentEffect == "Breathing");
     
-    qDebug() << "Loaded lighting settings: Effect=" << m_currentEffect 
-             << "Speed=" << m_currentSpeed 
-             << "Brightness=" << m_currentBrightness
-             << "Direction=" << (m_directionLeft ? "Left" : "Right");
+    // Static Color and Breathing show port color buttons
+    m_staticColorWidget->setVisible(isStaticColor || isBreathing);
+    
+    // Static Color hides speed slider
+    m_speedSlider->setVisible(!isStaticColor);
+    
+    // Hide direction for Static Color, Rainbow Morph, and Breathing (no direction control)
+    m_directionWidget->setVisible(!isStaticColor && !isRainbowMorph && !isBreathing);
+    
+    DEBUG_LOG("Loaded lighting settings: Effect=", m_currentEffect, 
+             "Speed=", m_currentSpeed, 
+             "Brightness=", m_currentBrightness,
+             "Direction=", (m_directionLeft ? "Left" : "Right"));
+}
+
+void LightingPage::loadFanConfiguration()
+{
+    QSettings settings("LianLi", "LConnect3");
+    
+    // Load which ports have fans connected
+    m_portEnabled[0] = settings.value("FanConfig/Port1", true).toBool();
+    m_portEnabled[1] = settings.value("FanConfig/Port2", true).toBool();
+    m_portEnabled[2] = settings.value("FanConfig/Port3", true).toBool();
+    m_portEnabled[3] = settings.value("FanConfig/Port4", true).toBool();
+}
+
+void LightingPage::updatePortButtonStates()
+{
+    for (int i = 0; i < 4; ++i) {
+        if (m_colorButtons[i]) {
+            bool enabled = m_portEnabled[i];
+            m_colorButtons[i]->setEnabled(enabled);
+            
+            // Update button appearance
+            if (enabled) {
+                // Normal color button style
+                updateColorButton(i);
+            } else {
+                // Grayed out disabled button
+                m_colorButtons[i]->setStyleSheet(
+                    "background-color: #404040; "
+                    "border: 2px solid #555555; "
+                    "border-radius: 4px;"
+                );
+            }
+        }
+    }
+    
+    // Update the fan lighting widget to show disabled ports
+    if (m_fanLightingWidget) {
+        m_fanLightingWidget->setPortEnabled(m_portEnabled);
+    }
 }

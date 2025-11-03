@@ -9,6 +9,7 @@
 \*---------------------------------------------------------*/
 
 #include "sl_infinity_hid.h"
+#include "../utils/debugutil.h"
 #include <iostream>
 #include <cstring>
 #include <fstream>
@@ -190,8 +191,8 @@ bool SLInfinityHIDController::SendCommitAction(uint8_t channel, uint8_t effect, 
     usb_buf[0x04] = direction;      // Direction
     usb_buf[0x05] = brightness;     // Brightness
 
-    printf("SendCommitAction: channel=%d, effect=0x%02X, speed=0x%02X, direction=0x%02X, brightness=0x%02X\n", 
-           channel, effect, speed, direction, brightness);
+    DEBUG_PRINTF("SendCommitAction: channel=%d, effect=0x%02X, speed=0x%02X, direction=0x%02X, brightness=0x%02X\n", 
+                 channel, effect, speed, direction, brightness);
 
     bool result = m_device.Write(usb_buf, sizeof(usb_buf));
     std::this_thread::sleep_for(5ms);
@@ -216,10 +217,10 @@ float SLInfinityHIDController::CalculateBrightnessLimit(const SLInfinityColor& c
 }
 
 bool SLInfinityHIDController::SetChannelColors(uint8_t channel, const std::vector<SLInfinityColor>& colors) {
-    printf("SetChannelColors: channel=%d, colors.size()=%zu\n", channel, colors.size());
+    DEBUG_PRINTF("SetChannelColors: channel=%d, colors.size()=%zu\n", channel, colors.size());
     
     if (!m_device.IsOpen() || channel >= 8) {
-        printf("SetChannelColors: Device not open or invalid channel\n");
+        DEBUG_PRINTF("SetChannelColors: Device not open or invalid channel\n");
         return false;
     }
 
@@ -240,34 +241,34 @@ bool SLInfinityHIDController::SetChannelColors(uint8_t channel, const std::vecto
     }
 
     // Send start action (4 fans)
-    printf("SetChannelColors: Sending start action for channel %d\n", channel);
+    DEBUG_PRINTF("SetChannelColors: Sending start action for channel %d\n", channel);
     if (!SendStartAction(channel, 4)) {
-        printf("SetChannelColors: SendStartAction failed for channel %d\n", channel);
+        DEBUG_PRINTF("SetChannelColors: SendStartAction failed for channel %d\n", channel);
         return false;
     }
 
     // Send color data (64 LEDs)
-    printf("SetChannelColors: Sending color data for channel %d\n", channel);
+    DEBUG_PRINTF("SetChannelColors: Sending color data for channel %d\n", channel);
     if (!SendColorData(channel, 64, led_data)) {
-        printf("SetChannelColors: SendColorData failed for channel %d\n", channel);
+        DEBUG_PRINTF("SetChannelColors: SendColorData failed for channel %d\n", channel);
         return false;
     }
 
-    printf("SetChannelColors: Success for channel %d\n", channel);
+    DEBUG_PRINTF("SetChannelColors: Success for channel %d\n", channel);
     return true;
 }
 
 bool SLInfinityHIDController::SetChannelMode(uint8_t channel, uint8_t mode) {
-    printf("SetChannelMode: channel=%d, mode=0x%02X\n", channel, mode);
+    DEBUG_PRINTF("SetChannelMode: channel=%d, mode=0x%02X\n", channel, mode);
     
     if (!m_device.IsOpen() || channel >= 8) {
-        printf("SetChannelMode: Device not open or invalid channel\n");
+        DEBUG_PRINTF("SetChannelMode: Device not open or invalid channel\n");
         return false;
     }
 
     // Send commit action with the specified mode
     bool result = SendCommitAction(channel, mode, 0x00, 0x00, 0x00); // Static color mode
-    printf("SetChannelMode: result=%s for channel %d\n", result ? "success" : "failed", channel);
+    DEBUG_PRINTF("SetChannelMode: result=%s for channel %d\n", result ? "success" : "failed", channel);
     return result;
 }
 

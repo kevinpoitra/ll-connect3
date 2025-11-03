@@ -22,6 +22,9 @@ class LightingPage : public QWidget
 public:
     explicit LightingPage(QWidget *parent = nullptr);
 
+protected:
+    void showEvent(QShowEvent *event) override;
+
 private slots:
     void onEffectChanged();
     void onSpeedChanged(int value);
@@ -40,6 +43,8 @@ private:
     void updateColorButton(int portIndex);
     void saveLightingSettings();
     void loadLightingSettings();
+    void loadFanConfiguration();
+    void updatePortButtonStates();
     
     QVBoxLayout *m_mainLayout;
     QHBoxLayout *m_contentLayout;
@@ -74,6 +79,7 @@ private:
     int m_currentBrightness;
     bool m_directionLeft;
     QColor m_portColors[4]; // Colors for each port
+    bool m_portEnabled[4];  // Which ports have fans connected
     
     // Lian Li integration
     LianLiQtIntegration *m_lianLi;

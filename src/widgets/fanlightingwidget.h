@@ -20,6 +20,7 @@ public:
     void setDirection(bool leftToRight);
     void setColor(const QColor &color);
     void setPortColors(const QColor colors[4]);
+    void setPortEnabled(const bool enabled[4]);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -45,6 +46,7 @@ private:
     bool m_directionLeft;
     QColor m_color;
     QColor m_portColors[4]; // Colors for each port
+    bool m_portEnabled[4];  // Which ports have fans connected
     
     QTimer *m_animationTimer;
     int m_animationFrame;

@@ -38,14 +38,14 @@ public:
     // RGB Control
     bool setChannelColor(int channel, const QColor &color, int brightness = 100);
     bool setChannelMode(int channel, int mode);
-    bool setChannelBreathing(int channel, const QColor &color, int speed = 50, int brightness = 100, bool directionLeft = false);
+    bool setChannelBreathing(int channel, const QColor &color, int speed = 50, int brightness = 100);
     bool turnOffChannel(int channel);
     bool turnOffAllChannels();
     
     // Convenience methods
     bool setAllChannelsColor(const QColor &color, int brightness = 100);
     bool setRainbowEffect(int speed = 50, int brightness = 100, bool directionLeft = false);
-    bool setRainbowMorphEffect(int speed = 50, int brightness = 100, bool directionLeft = false);
+    bool setRainbowMorphEffect(int speed = 50, int brightness = 100);
     bool setBreathingEffect(const QColor &color, int speed = 50, int brightness = 100, bool directionLeft = false);
     bool setMeteorEffect(int speed = 50, int brightness = 100, bool directionLeft = false);
     bool setRunwayEffect(int speed = 50, int brightness = 100, bool directionLeft = false);

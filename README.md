@@ -100,6 +100,9 @@ sudo make install
 
 # Run the app
 LConnect3
+
+# To uninstall the application
+sudo make uninstall
 ```
 
 ### Testing

@@ -19,6 +19,13 @@ FanLightingWidget::FanLightingWidget(QWidget *parent)
     m_portColors[1] = QColor(0, 255, 0);   // Port 2 - Green
     m_portColors[2] = QColor(0, 0, 255);   // Port 3 - Blue
     m_portColors[3] = QColor(255, 255, 0); // Port 4 - Yellow
+    
+    // Initialize all ports as enabled by default
+    m_portEnabled[0] = true;
+    m_portEnabled[1] = true;
+    m_portEnabled[2] = true;
+    m_portEnabled[3] = true;
+    
     m_animationTimer = new QTimer(this);
     connect(m_animationTimer, &QTimer::timeout, this, &FanLightingWidget::updateAnimation);
     m_animationTimer->start(50); // 20 FPS
@@ -58,6 +65,14 @@ void FanLightingWidget::setPortColors(const QColor colors[4])
 {
     for (int i = 0; i < 4; ++i) {
         m_portColors[i] = colors[i];
+    }
+    update();
+}
+
+void FanLightingWidget::setPortEnabled(const bool enabled[4])
+{
+    for (int i = 0; i < 4; ++i) {
+        m_portEnabled[i] = enabled[i];
     }
     update();
 }
@@ -113,19 +128,40 @@ void FanLightingWidget::drawFan(QPainter &painter, const QRect &rect, int fanInd
     // Draw LED ring around the fan
     QRect ledRing = fanArea.adjusted(-5, -5, 5, 5);
     
-    if (m_effect == "Rainbow") {
-        drawRainbowEffect(painter, ledRing, fanIndex);
-    } else if (m_effect == "Rainbow Morph") {
-        drawRainbowMorphEffect(painter, ledRing, fanIndex);
-    } else if (m_effect == "Static Color") {
-        drawStaticColorEffect(painter, ledRing, fanIndex);
-    } else if (m_effect == "Breathing") {
-        drawBreathingEffect(painter, ledRing, fanIndex);
-    } else if (m_effect == "Meteor") {
-        drawMeteorEffect(painter, ledRing, fanIndex);
-    } else if (m_effect == "Runway") {
-        drawRunwayEffect(painter, ledRing, fanIndex);
+    // Check if this port is enabled
+    bool portEnabled = m_portEnabled[fanIndex % 4];
+    
+    if (!portEnabled) {
+        // Draw disabled/grayed out LED ring
+        int ledCenterX = ledRing.center().x();
+        int ledCenterY = ledRing.center().y();
+        int ledRadius = qMin(ledRing.width(), ledRing.height()) / 2;
+        painter.setPen(QPen(QColor(60, 60, 60), 6));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawEllipse(ledCenterX - ledRadius + 5, ledCenterY - ledRadius + 5, (ledRadius - 5) * 2, (ledRadius - 5) * 2);
+    } else {
+        // Draw normal lighting effect
+        if (m_effect == "Rainbow") {
+            drawRainbowEffect(painter, ledRing, fanIndex);
+        } else if (m_effect == "Rainbow Morph") {
+            drawRainbowMorphEffect(painter, ledRing, fanIndex);
+        } else if (m_effect == "Static Color") {
+            drawStaticColorEffect(painter, ledRing, fanIndex);
+        } else if (m_effect == "Breathing") {
+            drawBreathingEffect(painter, ledRing, fanIndex);
+        } else if (m_effect == "Meteor") {
+            drawMeteorEffect(painter, ledRing, fanIndex);
+        } else if (m_effect == "Runway") {
+            drawRunwayEffect(painter, ledRing, fanIndex);
+        }
     }
+    
+    // Draw port label at the bottom of the fan
+    painter.setPen(QColor(200, 200, 200)); // Light gray text
+    painter.setFont(QFont("Arial", 10, QFont::Normal));
+    QString label = QString("Port %1").arg(fanIndex + 1);
+    QRect labelRect(rect.left(), rect.bottom() - 25, rect.width(), 20);
+    painter.drawText(labelRect, Qt::AlignCenter, label);
 }
 
 void FanLightingWidget::drawRainbowEffect(QPainter &painter, const QRect &rect, int fanIndex)
@@ -200,8 +236,6 @@ void FanLightingWidget::drawStaticColorEffect(QPainter &painter, const QRect &re
 
 void FanLightingWidget::drawBreathingEffect(QPainter &painter, const QRect &rect, int fanIndex)
 {
-    Q_UNUSED(fanIndex)
-    
     int centerX = rect.center().x();
     int centerY = rect.center().y();
     int radius = qMin(rect.width(), rect.height()) / 2;
@@ -211,7 +245,9 @@ void FanLightingWidget::drawBreathingEffect(QPainter &painter, const QRect &rect
     double breathPhase = sin(m_timeOffset * speedMultiplier * 2.0) * 0.5 + 0.5;
     int brightness = m_brightness * (0.3 + 0.7 * breathPhase);
     
-    QColor color = applyBrightness(m_color, brightness);
+    // Use port-specific color (fanIndex 0-3 maps to ports 1-4)
+    QColor portColor = m_portColors[fanIndex % 4];
+    QColor color = applyBrightness(portColor, brightness);
     painter.setPen(QPen(color, 6));
     painter.setBrush(Qt::NoBrush);
     painter.drawEllipse(centerX - radius + 5, centerY - radius + 5, (radius - 5) * 2, (radius - 5) * 2);

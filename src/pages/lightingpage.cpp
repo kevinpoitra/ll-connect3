@@ -416,8 +416,28 @@ void LightingPage::onApply()
             }
         }
     } else if (m_currentEffect == "Breathing") {
-        // For breathing, use white as default (could add color picker later)
-        success = m_lianLi->setBreathingEffect(QColor(255, 255, 255), m_currentSpeed, m_currentBrightness, m_directionLeft);
+        // For breathing, use individual port colors just like Static Color
+        // Each physical port uses TWO channels (center + outer ring LEDs)
+        success = true;
+        
+        for (int port = 0; port < 4; ++port) {
+            QColor color = m_portColors[port];
+            int channel1 = port * 2;      // First channel for this port
+            int channel2 = port * 2 + 1;  // Second channel for this port
+            
+            qDebug() << "Setting Breathing for Port" << (port + 1) << "via channels" << channel1 << "&" << channel2 
+                     << "to color" << color;
+            
+            // Send breathing effect to both channels for this port
+            if (!m_lianLi->setChannelBreathing(channel1, color, m_currentSpeed, m_currentBrightness, m_directionLeft)) {
+                qDebug() << "Failed to set Breathing for Port" << (port + 1) << "channel" << channel1;
+                success = false;
+            }
+            if (!m_lianLi->setChannelBreathing(channel2, color, m_currentSpeed, m_currentBrightness, m_directionLeft)) {
+                qDebug() << "Failed to set Breathing for Port" << (port + 1) << "channel" << channel2;
+                success = false;
+            }
+        }
     } else if (m_currentEffect == "Meteor") {
         success = m_lianLi->setMeteorEffect(m_currentSpeed, m_currentBrightness, m_directionLeft);
     } else if (m_currentEffect == "Runway") {

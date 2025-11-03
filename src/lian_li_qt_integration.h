@@ -38,6 +38,7 @@ public:
     // RGB Control
     bool setChannelColor(int channel, const QColor &color, int brightness = 100);
     bool setChannelMode(int channel, int mode);
+    bool setChannelBreathing(int channel, const QColor &color, int speed = 50, int brightness = 100, bool directionLeft = false);
     bool turnOffChannel(int channel);
     bool turnOffAllChannels();
     

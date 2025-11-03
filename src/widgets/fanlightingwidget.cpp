@@ -72,11 +72,11 @@ void FanLightingWidget::paintEvent(QPaintEvent *event)
     // Dark background
     painter.fillRect(rect(), QColor(20, 20, 20));
     
-    // Draw 6 fans in a 2x3 grid with better spacing
+    // Draw 4 fans in a 2x2 grid (matching 4 physical ports)
     int fanWidth = (width() - 20) / 2;  // Account for margins
-    int fanHeight = (height() - 20) / 3; // Account for margins
+    int fanHeight = (height() - 20) / 2; // Account for margins (2 rows for 4 fans)
     
-    for (int row = 0; row < 3; ++row) {
+    for (int row = 0; row < 2; ++row) {
         for (int col = 0; col < 2; ++col) {
             int fanIndex = row * 2 + col;
             QRect fanRect(col * fanWidth + 10, row * fanHeight + 10, fanWidth - 10, fanHeight - 10);

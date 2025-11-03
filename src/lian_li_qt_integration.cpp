@@ -342,6 +342,35 @@ bool LianLiQtIntegration::setRunwayEffect(int speed, int brightness, bool direct
     return allSuccess;
 }
 
+bool LianLiQtIntegration::setChannelBreathing(int channel, const QColor &color, int speed, int brightness, bool directionLeft)
+{
+    if (!isConnected() || !isChannelValid(channel)) {
+        return false;
+    }
+    
+    SLInfinityColor slColor = qColorToSLInfinity(color);
+    std::vector<SLInfinityColor> colors = {slColor};
+    uint8_t hwSpeed = convertSpeed(speed);
+    uint8_t hwBrightness = convertBrightness(brightness);
+    uint8_t hwDirection = convertDirection(directionLeft);
+    
+    // Set the color for this channel
+    if (!m_controller->SetChannelColors(static_cast<uint8_t>(channel), colors)) {
+        return false;
+    }
+    
+    // Send commit action for breathing mode
+    bool success = m_controller->SendCommitAction(
+        static_cast<uint8_t>(channel),
+        0x02, // Breathing mode
+        hwSpeed,
+        hwDirection,
+        hwBrightness
+    );
+    
+    return success;
+}
+
 bool LianLiQtIntegration::setBreathingEffect(const QColor &color, int speed, int brightness, bool directionLeft)
 {
     if (!isConnected()) {

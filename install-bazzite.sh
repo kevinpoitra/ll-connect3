@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# L-Connect 3 Installation Script
-# This script installs both the kernel driver and the Qt application
+# L-Connect 3 Installation Script for Bazzite OS
+# This script installs both the kernel driver and the Qt application on immutable systems
+# Bazzite OS uses rpm-ostree instead of dnf for package management
 
 set -e  # Exit on error
 
@@ -18,9 +19,6 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KERNEL_DIR="$SCRIPT_DIR/kernel"
 BUILD_DIR="$SCRIPT_DIR/build"
-
-# Distribution type (set by menu)
-DISTRO_TYPE=""
 
 # Function to print colored messages
 print_info() {
@@ -39,49 +37,15 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Display menu and get user selection
-show_menu() {
-    echo ""
-    echo -e "${BOLD}=========================================="
-    echo -e "  L-Connect 3 Installation Script"
-    echo -e "==========================================${NC}"
-    echo ""
-    echo -e "${CYAN}Select your Linux distribution type:${NC}"
-    echo ""
-    echo -e "  ${BOLD}1)${NC} Debian-based (Ubuntu, Kubuntu, Linux Mint, Pop!_OS, etc.)"
-    echo -e "  ${BOLD}2)${NC} RHEL-based (Fedora, CentOS, Rocky Linux, AlmaLinux, RHEL, etc.)"
-    echo -e "  ${BOLD}3)${NC} Arch-based (Arch Linux, Manjaro, EndeavourOS, etc.)"
-    echo -e "  ${BOLD}4)${NC} Exit"
-    echo ""
+# Check if running on Bazzite/immutable system
+check_immutable_system() {
+    if ! command -v rpm-ostree &> /dev/null; then
+        print_error "rpm-ostree not found. This script is for Bazzite OS and other immutable Fedora-based systems."
+        print_info "If you're on a regular Fedora system, please use install.sh instead."
+        exit 1
+    fi
     
-    while true; do
-        read -p "Enter your choice [1-4]: " choice
-        case $choice in
-            1)
-                DISTRO_TYPE="debian"
-                print_info "Selected: Debian-based distribution"
-                break
-                ;;
-            2)
-                DISTRO_TYPE="rhel"
-                print_info "Selected: RHEL-based distribution"
-                break
-                ;;
-            3)
-                DISTRO_TYPE="arch"
-                print_info "Selected: Arch-based distribution"
-                break
-                ;;
-            4)
-                print_info "Installation cancelled."
-                exit 0
-                ;;
-            *)
-                print_error "Invalid option. Please enter 1, 2, 3, or 4."
-                ;;
-        esac
-    done
-    echo ""
+    print_success "Detected immutable system (rpm-ostree)"
 }
 
 # Check if running as root (we'll use sudo when needed)
@@ -92,137 +56,89 @@ check_sudo() {
     fi
 }
 
-# Install dependencies for Debian-based systems
-install_debian_dependencies() {
-    print_info "Installing dependencies for Debian-based system..."
+# Install dependencies using rpm-ostree
+install_dependencies() {
+    print_info "Installing dependencies for Bazzite OS..."
+    print_warning "This will layer packages using rpm-ostree, which requires a reboot."
+    print_warning "The installation will continue after you reboot and run this script again."
+    echo ""
     
-    sudo apt update
-    sudo apt install -y \
-        build-essential \
-        make \
-        gcc \
-        linux-headers-$(uname -r) \
-        cmake \
-        qt6-base-dev \
-        qt6-charts-dev \
-        lm-sensors \
-        libusb-1.0-0-dev \
-        libhidapi-dev \
-        pkg-config
-    
-    print_success "Dependencies installed"
-}
-
-# Install dependencies for RHEL-based systems
-install_rhel_dependencies() {
-    print_info "Installing dependencies for RHEL-based system..."
-    
-    # Check if running on immutable system (Bazzite OS)
-    if command -v rpm-ostree &> /dev/null; then
-        print_error "Detected immutable system (rpm-ostree)."
-        print_info "Bazzite OS and other immutable systems require a different installer."
-        print_info "Please use the Bazzite-specific installer instead:"
-        print_info "  ./install-bazzite.sh"
-        exit 1
+    read -p "Do you want to proceed with installing dependencies? (y/n): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        print_info "Installation cancelled."
+        exit 0
     fi
     
-    # Determine package manager (dnf or yum)
-    if command -v dnf &> /dev/null; then
-        PKG_MGR="dnf"
-    elif command -v yum &> /dev/null; then
-        PKG_MGR="yum"
-    else
-        print_error "Neither dnf nor yum found. Cannot install dependencies."
-        exit 1
-    fi
-    
-    print_info "Using package manager: $PKG_MGR"
-    
-    # First, install basic build tools
-    sudo $PKG_MGR groupinstall -y "Development Tools" "C Development Tools and Libraries" 2>/dev/null || \
-        sudo $PKG_MGR groupinstall -y "Development Tools" 2>/dev/null || \
-        sudo $PKG_MGR install -y gcc make
-    
-    # Install kernel development packages
-    # On RHEL/Fedora, we need kernel-devel that matches the running kernel
     RUNNING_KERNEL=$(uname -r)
     print_info "Running kernel version: $RUNNING_KERNEL"
     
-    # Try to install kernel-devel for exact kernel version first
-    print_info "Installing kernel development packages..."
-    if ! sudo $PKG_MGR install -y kernel-devel-$RUNNING_KERNEL kernel-headers-$RUNNING_KERNEL 2>/dev/null; then
-        print_warning "Could not install kernel-devel for exact kernel version."
-        print_info "Installing latest kernel-devel packages..."
-        sudo $PKG_MGR install -y kernel-devel kernel-headers
-        
-        # Check if we need to reboot
-        INSTALLED_KERNEL_DEVEL=$(rpm -q kernel-devel --qf '%{VERSION}-%{RELEASE}.%{ARCH}\n' 2>/dev/null | head -1)
-        if [[ "$INSTALLED_KERNEL_DEVEL" != "$RUNNING_KERNEL" ]]; then
-            print_warning "Kernel-devel version ($INSTALLED_KERNEL_DEVEL) doesn't match running kernel ($RUNNING_KERNEL)"
-            print_warning "You may need to reboot and run this script again after updating your kernel."
-        fi
-    fi
+    # Layer packages using rpm-ostree
+    print_info "Layering packages with rpm-ostree (this may take a few minutes)..."
     
-    # Install other dependencies
-    print_info "Installing Qt6 and other dependencies..."
-    sudo $PKG_MGR install -y \
+    # Install build tools and kernel development packages
+    sudo rpm-ostree install \
         gcc \
         gcc-c++ \
         make \
         cmake \
+        kernel-devel-$RUNNING_KERNEL \
+        kernel-headers-$RUNNING_KERNEL \
         elfutils-libelf-devel \
         qt6-qtbase-devel \
         qt6-qtcharts-devel \
         lm_sensors \
         libusb1-devel \
         hidapi-devel \
-        pkgconfig \
-        dkms
+        pkgconfig
     
-    # For Fedora, might need to enable RPM Fusion for some packages
-    if ! rpm -q hidapi-devel &>/dev/null; then
-        print_warning "hidapi-devel not found. Trying alternative package names..."
-        sudo $PKG_MGR install -y hidapi hidapi-devel 2>/dev/null || true
+    print_success "Packages layered successfully"
+    echo ""
+    print_warning "IMPORTANT: You must reboot your system for the packages to be available."
+    print_info "After rebooting, run this script again to continue with the installation:"
+    print_info "  ./install-bazzite.sh"
+    echo ""
+    print_info "To reboot now, run: sudo systemctl reboot"
+    exit 0
+}
+
+# Check if dependencies are installed
+check_dependencies() {
+    print_info "Checking if dependencies are installed..."
+    
+    local missing_packages=()
+    
+    # Check for required commands
+    if ! command -v gcc &> /dev/null; then
+        missing_packages+=("gcc")
+    fi
+    if ! command -v make &> /dev/null; then
+        missing_packages+=("make")
+    fi
+    if ! command -v cmake &> /dev/null; then
+        missing_packages+=("cmake")
     fi
     
-    print_success "Dependencies installed"
-}
-
-# Install dependencies for Arch-based systems
-install_arch_dependencies() {
-    print_info "Installing dependencies for Arch-based system..."
+    # Check for kernel headers
+    RUNNING_KERNEL=$(uname -r)
+    KERNEL_BUILD_DIR="/lib/modules/$RUNNING_KERNEL/build"
+    if [ ! -d "$KERNEL_BUILD_DIR" ]; then
+        missing_packages+=("kernel-devel-$RUNNING_KERNEL")
+    fi
     
-    sudo pacman -S --needed --noconfirm \
-        base-devel \
-        linux-headers \
-        cmake \
-        qt6-base \
-        qt6-charts \
-        lm_sensors \
-        libusb \
-        hidapi \
-        pkgconf
+    # Check for Qt6
+    if ! pkg-config --exists Qt6Core 2>/dev/null; then
+        missing_packages+=("qt6-qtbase-devel")
+    fi
     
-    print_success "Dependencies installed"
-}
-
-# Install dependencies based on selected distribution type
-install_dependencies() {
-    case $DISTRO_TYPE in
-        debian)
-            install_debian_dependencies
-            ;;
-        rhel)
-            install_rhel_dependencies
-            ;;
-        arch)
-            install_arch_dependencies
-            ;;
-        *)
-            print_error "Unknown distribution type: $DISTRO_TYPE"
-            exit 1
-            ;;
-    esac
+    if [ ${#missing_packages[@]} -gt 0 ]; then
+        print_error "Missing dependencies: ${missing_packages[*]}"
+        print_info "Installing dependencies..."
+        install_dependencies
+        # install_dependencies will exit, so we won't reach here
+    fi
+    
+    print_success "All dependencies are installed"
+    return 0
 }
 
 # Verify kernel build environment
@@ -234,15 +150,8 @@ verify_kernel_build_env() {
     
     if [ ! -d "$KERNEL_BUILD_DIR" ]; then
         print_error "Kernel build directory not found: $KERNEL_BUILD_DIR"
-        
-        if [[ "$DISTRO_TYPE" == "rhel" ]]; then
-            print_info "On RHEL-based systems, try:"
-            print_info "  sudo dnf install kernel-devel-\$(uname -r)"
-            print_info "Or update your system and reboot to get matching kernel-devel:"
-            print_info "  sudo dnf update && sudo reboot"
-        else
-            print_info "Please install kernel headers for your running kernel."
-        fi
+        print_info "This usually means kernel-devel doesn't match your running kernel."
+        print_info "Try: sudo rpm-ostree install kernel-devel-$(uname -r) && sudo systemctl reboot"
         exit 1
     fi
     
@@ -277,16 +186,11 @@ install_kernel_driver() {
     print_info "Building kernel module..."
     if ! make; then
         print_error "Kernel module build failed!"
-        
-        if [[ "$DISTRO_TYPE" == "rhel" ]]; then
-            print_info "Common fixes for RHEL-based systems:"
-            print_info "1. Ensure kernel-devel matches running kernel:"
-            print_info "   sudo dnf install kernel-devel-\$(uname -r)"
-            print_info "2. If that fails, update and reboot:"
-            print_info "   sudo dnf update && sudo reboot"
-            print_info "3. Check SELinux is not blocking:"
-            print_info "   sudo setenforce 0  (temporarily disable)"
-        fi
+        print_info "Common fixes for Bazzite OS:"
+        print_info "1. Ensure kernel-devel matches running kernel:"
+        print_info "   sudo rpm-ostree install kernel-devel-\$(uname -r) && sudo systemctl reboot"
+        print_info "2. After kernel updates, rebuild the module:"
+        print_info "   cd kernel && make clean && make && sudo make install"
         exit 1
     fi
     
@@ -303,7 +207,7 @@ install_kernel_driver() {
     print_info "Loading kernel module..."
     sudo rmmod Lian_Li_SL_INFINITY 2>/dev/null || true
     
-    # For RHEL systems, try insmod first if modprobe fails
+    # Try insmod first if modprobe fails
     if ! sudo modprobe Lian_Li_SL_INFINITY 2>/dev/null; then
         print_warning "modprobe failed, trying insmod..."
         if ! sudo insmod Lian_Li_SL_INFINITY.ko 2>/dev/null; then
@@ -387,11 +291,8 @@ install_application() {
     print_info "Configuring build with CMake..."
     if ! cmake -DCMAKE_INSTALL_PREFIX=/usr ..; then
         print_error "CMake configuration failed!"
-        
-        if [[ "$DISTRO_TYPE" == "rhel" ]]; then
-            print_info "On RHEL-based systems, ensure Qt6 development packages are installed:"
-            print_info "  sudo dnf install qt6-qtbase-devel qt6-qtcharts-devel"
-        fi
+        print_info "Ensure Qt6 development packages are layered:"
+        print_info "  sudo rpm-ostree install qt6-qtbase-devel qt6-qtcharts-devel && sudo systemctl reboot"
         exit 1
     fi
     
@@ -468,35 +369,45 @@ verify_installation() {
 
 # Main installation process
 main() {
-    # Show menu and get user selection
-    show_menu
+    echo ""
+    echo -e "${BOLD}=========================================="
+    echo -e "  L-Connect 3 Installation Script"
+    echo -e "  For Bazzite OS (Immutable System)"
+    echo -e "==========================================${NC}"
+    echo ""
+    
+    # Check if running on immutable system
+    check_immutable_system
     
     check_sudo
     
     print_info "Starting installation process..."
     echo ""
     
-    # Step 1: Install dependencies
-    install_dependencies
+    # Check if dependencies are installed
+    if ! check_dependencies; then
+        # install_dependencies will exit after prompting for reboot
+        exit 0
+    fi
     echo ""
     
-    # Step 2: Install kernel driver
+    # Step 1: Install kernel driver
     install_kernel_driver
     echo ""
     
-    # Step 3: Configure sensors
+    # Step 2: Configure sensors
     configure_sensors
     echo ""
     
-    # Step 4: Configure udev (RGB HID access)
+    # Step 3: Configure udev (RGB HID access)
     configure_udev
     echo ""
     
-    # Step 5: Install application
+    # Step 4: Install application
     install_application
     echo ""
     
-    # Step 6: Verify installation
+    # Step 5: Verify installation
     verify_installation
     echo ""
     
@@ -508,18 +419,14 @@ main() {
     echo "  - Check module status: lsmod | grep Lian_Li"
     echo ""
     
-    if [[ "$DISTRO_TYPE" == "rhel" ]]; then
-        print_warning "RHEL-based system note:"
-        echo "  - If SELinux is enforcing, you may need to create a policy for the driver"
-        echo "  - After kernel updates, rebuild the module with:"
-        echo "    cd $KERNEL_DIR && make clean && make && sudo make install"
-        echo ""
-    else
-        print_warning "Note: After kernel updates, you may need to rebuild the kernel module:"
-        echo "  cd $KERNEL_DIR && make clean && make && sudo make install"
-        echo ""
-    fi
+    print_warning "Bazzite OS Notes:"
+    echo "  - After kernel updates via rpm-ostree, rebuild the module:"
+    echo "    cd $KERNEL_DIR && make clean && make && sudo make install"
+    echo "  - The kernel module persists across reboots once installed"
+    echo "  - Application and udev rules persist across reboots"
+    echo ""
 }
 
 # Run main function
 main
+

@@ -22,6 +22,9 @@ BUILD_DIR="$SCRIPT_DIR/build"
 # Distribution type (set by menu)
 DISTRO_TYPE=""
 
+# LLVM flag for Clang-built kernels
+USE_LLVM=""
+
 # Function to print colored messages
 print_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -37,6 +40,16 @@ print_warning() {
 
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Detect if kernel was built with Clang/LLVM
+detect_llvm_kernel() {
+    if grep -qi "clang" /proc/version 2>/dev/null; then
+        USE_LLVM="LLVM=1"
+        print_info "Detected Clang-built kernel - will use LLVM=1 for module compilation"
+    else
+        USE_LLVM=""
+    fi
 }
 
 # Display menu and get user selection
@@ -271,11 +284,11 @@ install_kernel_driver() {
     cd "$KERNEL_DIR"
     
     # Clean any previous build
-    make clean 2>/dev/null || true
-    
+    make $USE_LLVM clean 2>/dev/null || true
+
     # Build the module
     print_info "Building kernel module..."
-    if ! make; then
+    if ! make $USE_LLVM; then
         print_error "Kernel module build failed!"
         
         if [[ "$DISTRO_TYPE" == "rhel" ]]; then
@@ -297,7 +310,7 @@ install_kernel_driver() {
     
     # Install using the Makefile (which handles depmod)
     print_info "Installing kernel module to system..."
-    make install
+    make $USE_LLVM install
     
     # Load the module
     print_info "Loading kernel module..."
@@ -475,7 +488,11 @@ main() {
     
     print_info "Starting installation process..."
     echo ""
-    
+
+    # Detect if kernel was built with Clang/LLVM
+    detect_llvm_kernel
+    echo ""
+
     # Step 1: Install dependencies
     install_dependencies
     echo ""
@@ -508,11 +525,15 @@ main() {
     echo "  - Check module status: lsmod | grep Lian_Li"
     echo ""
     
-    if [[ "$DISTRO_TYPE" == "rhel" ]]; then
+    if [[ -n "$USE_LLVM" ]]; then
+        print_warning "Clang-built kernel detected. After kernel updates, rebuild with:"
+        echo "  cd $KERNEL_DIR && make LLVM=1 clean && make LLVM=1 && sudo make LLVM=1 install"
+        echo ""
+    elif [[ "$DISTRO_TYPE" == "rhel" ]]; then
         print_warning "RHEL-based system note:"
         echo "  - If SELinux is enforcing, you may need to create a policy for the driver"
         echo "  - After kernel updates, rebuild the module with:"
-        echo "    cd $KERNEL_DIR && make clean && make && sudo make install"
+        echo "  cd $KERNEL_DIR && make clean && make && sudo make install"
         echo ""
     else
         print_warning "Note: After kernel updates, you may need to rebuild the kernel module:"
